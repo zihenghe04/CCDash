@@ -1,83 +1,138 @@
 <div align="center">
-  <img src="logo.png" width="120" height="120" alt="CCDash Logo">
-  <h1>CCDash</h1>
-  <p><strong>Open-source usage analytics dashboard for Claude Code CLI</strong></p>
+  <img src="logo.png" width="140" height="140" alt="CCDash Logo" style="border-radius: 24px;">
+  <h1>✨ CCDash</h1>
+  <p><strong>The missing analytics dashboard for Claude Code CLI</strong></p>
+  <p><em>Know exactly where every token goes. No API key needed.</em></p>
+
   <p>
-    <a href="#features">Features</a> &bull;
-    <a href="#quick-start">Quick Start</a> &bull;
-    <a href="#remote-monitoring">Remote</a> &bull;
-    <a href="#configuration">Config</a> &bull;
+    <img src="https://img.shields.io/badge/python-3.8+-blue?style=flat-square&logo=python" alt="Python">
+    <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform">
+    <img src="https://img.shields.io/badge/zero-dependencies-orange?style=flat-square" alt="Zero Deps">
+  </p>
+
+  <p>
+    <a href="#-why-ccdash">Why?</a> &bull;
+    <a href="#-features">Features</a> &bull;
+    <a href="#%EF%B8%8F-screenshots">Screenshots</a> &bull;
+    <a href="#-quick-start">Quick Start</a> &bull;
+    <a href="#-remote-monitoring">Remote</a> &bull;
     <a href="#%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3">中文</a>
   </p>
 </div>
 
 ---
 
-## What is CCDash?
+## 🤔 Why CCDash?
 
-CCDash is a self-hosted, real-time analytics dashboard that monitors your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI usage. It reads directly from Claude Code's local data files -- no API key required, works with subscription plans.
+You're paying for a Claude subscription. But do you actually know:
 
-> **Note**: This is a community project and is not affiliated with, endorsed by, or associated with Anthropic.
+- 💸 **How much would your usage cost** at API rates? (Spoiler: probably a lot more than $20/mo)
+- 📊 **Which model eats the most tokens?** Opus? Sonnet? How much cache hit are you getting?
+- ⏱️ **What's your average response time?** Is it getting slower?
+- 🔥 **Are you about to hit the rate limit?** How much of your 5h/7d quota is used?
 
-## Features
+**No existing tool answers these for Claude Code CLI subscribers.** CCDash does.
 
-- **Real-time Monitoring** -- Live stream of API calls with RPM/TPM metrics
-- **Cost Estimation** -- Per-call and aggregate cost based on official Anthropic pricing
-- **Multi-source Aggregation** -- Monitor local + remote servers via lightweight agents
-- **Subscription Usage Tracking** -- 5-hour and 7-day rolling window utilization (via claude.ai)
-- **Rich Analytics** -- Daily trends, model distribution, cache analysis, activity heatmaps
-- **Session Browser** -- Search and filter conversation sessions
-- **Dark/Light Theme** -- Modern UI with Phosphor icons
-- **Bilingual** -- Full Chinese/English interface
-- **Zero Dependencies** -- Pure Python backend, vanilla JS frontend
+### How is this different?
 
-## Screenshots
+| | CCDash | Claude.ai Settings | NewAPI / One API | API Console |
+|---|:---:|:---:|:---:|:---:|
+| Works with **subscriptions** (no API key) | ✅ | ✅ | ❌ | ❌ |
+| Per-call **cost estimation** | ✅ | ❌ | ✅ | ✅ |
+| **RPM / TPM** metrics | ✅ | ❌ | ✅ | ❌ |
+| **TTFT** & duration tracking | ✅ | ❌ | ✅ | ❌ |
+| **Cache hit rate** analysis | ✅ | ❌ | ✅ | ❌ |
+| **Multi-server** aggregation | ✅ | ❌ | ✅ | ❌ |
+| **Session browser** | ✅ | ❌ | ❌ | ❌ |
+| **5h + 7d quota** tracking | ✅ | ✅ | ❌ | ❌ |
+| Daily trend & heatmap | ✅ | ❌ | ✅ | ✅ |
+| Self-hosted / private | ✅ | — | ✅ | ❌ |
+| Zero dependencies | ✅ | — | ❌ | — |
 
-### Overview — Dark Mode
-![Overview Dark](screenshot/overview-dark.png)
+> **Note**: CCDash is a community project, not affiliated with Anthropic.
 
-### Overview — Light Mode
-![Overview Light](screenshot/overview-light.png)
+---
 
-### Analytics
-![Analytics](screenshot/analytics.png)
+## 🚀 Features
 
-### Live Stream
-![Live Stream](screenshot/live.png)
+### 📈 Real-time Overview
+> SVG gauge for 5h & 7d quota · RPM/TPM · avg TTFT & duration · sparkline trends
 
-### System Logs
-![Logs](screenshot/logs.png)
+### 💰 Cost Intelligence
+> Per-call cost based on [official pricing](https://docs.anthropic.com/en/docs/about-claude/pricing) · daily cost trend chart · per-model breakdown · total savings vs API
 
-## Quick Start
+### 🔍 Deep Analytics
+> Model distribution donut · cache hit analysis · activity heatmap · project TOP 10
+
+### 📡 Live Stream
+> Real-time API call feed · colored token indicators (↓ input ↑ output ⟲ cache read ⟳ cache write)
+
+### 🌐 Multi-Server
+> Deploy lightweight `agent.py` on remote servers · aggregate all usage in one dashboard
+
+### 🎨 Modern UI
+> Dark/Light theme · Phosphor icons · smooth animations · bilingual (EN/ZH)
+
+---
+
+## 🖼️ Screenshots
+
+<table>
+  <tr>
+    <td align="center"><strong>🌙 Overview — Dark</strong></td>
+    <td align="center"><strong>☀️ Overview — Light</strong></td>
+  </tr>
+  <tr>
+    <td><img src="screenshot/overview-dark.png" alt="Overview Dark"></td>
+    <td><img src="screenshot/overview-light.png" alt="Overview Light"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>📊 Analytics</strong></td>
+    <td align="center"><strong>📡 Live Stream</strong></td>
+  </tr>
+  <tr>
+    <td><img src="screenshot/analytics.png" alt="Analytics"></td>
+    <td><img src="screenshot/live.png" alt="Live Stream"></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><strong>📋 System Logs</strong></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="screenshot/logs.png" alt="Logs"></td>
+  </tr>
+</table>
+
+---
+
+## ⚡ Quick Start
 
 ### Prerequisites
 
-- Python 3.8+
-- Claude Code CLI installed and used (generates data in `~/.claude/`)
+- 🐍 Python 3.8+
+- 🤖 Claude Code CLI installed and used (data lives in `~/.claude/`)
 
-### Installation
+### 3 commands to go
 
 ```bash
-git clone https://github.com/user/CCDash.git
+git clone https://github.com/zihenghe04/CCDash.git
 cd CCDash
-chmod +x start.sh
-./start.sh
-```
-
-On first run, `start.sh` will create `config.json` from the template and ask you to edit it.
-
-Or run directly:
-
-```bash
-cp config.example.json config.json
 python3 server.py
 ```
 
-Open **http://localhost:8420** in your browser.
+Open 👉 **http://localhost:8420**
 
-## Configuration
+That's it. No `pip install`, no `npm`, no Docker. Just Python.
 
-Edit `config.json`:
+---
+
+## ⚙️ Configuration
+
+Copy the template and edit:
+
+```bash
+cp config.example.json config.json
+```
 
 ```json
 {
@@ -88,186 +143,234 @@ Edit `config.json`:
 ```
 
 | Field | Required | Description |
-|-------|----------|-------------|
-| `remotes` | No | Remote agent endpoints for multi-server monitoring |
-| `claude_session_key` | No | Session key from claude.ai for subscription usage tracking |
-| `claude_org_id` | No | Organization ID from claude.ai |
+|:------|:--------:|:------------|
+| `remotes` | ❌ | Remote agent endpoints for multi-server monitoring |
+| `claude_session_key` | ❌ | Enables 5h/7d subscription quota tracking |
+| `claude_org_id` | ❌ | Your claude.ai organization ID |
 
-### Getting Session Key (Optional)
+### 🔑 Getting Session Key (Optional)
 
-To enable 5h/7d subscription usage tracking:
+To unlock real-time quota gauges:
 
 1. Log in to [claude.ai](https://claude.ai)
-2. Open DevTools (F12) -> Application -> Cookies
+2. Open DevTools (`F12`) → **Application** → **Cookies** → `claude.ai`
 3. Copy the `sessionKey` value
-4. Find your org ID in the URL or network request responses
+4. Find your org ID in any API request URL: `organizations/{org_id}/...`
 
-## Remote Monitoring
-
-Deploy `agent.py` on remote servers to aggregate usage from multiple machines:
-
-```bash
-# On remote server
-python3 agent.py --port 8421 --token your_secret_token
-```
-
-Then add the remote to your local `config.json`:
-
-```json
-{
-  "remotes": [
-    {
-      "name": "My Server",
-      "url": "http://server-ip:8421",
-      "token": "your_secret_token",
-      "enabled": true
-    }
-  ]
-}
-```
-
-Or use SSH tunnel for secure access:
-
-```bash
-ssh -L 8421:127.0.0.1:8421 user@server -N -f
-```
-
-## Project Structure
-
-```
-CCDash/
-├── server.py          # Main dashboard backend
-├── agent.py           # Remote monitoring agent
-├── fetch-usage.swift  # macOS helper for claude.ai usage API
-├── config.json        # Your local config (not tracked by git)
-├── config.example.json
-├── start.sh           # Convenience launcher
-├── web/
-│   ├── index.html     # Dashboard UI
-│   ├── style.css      # Zinc-gray SaaS theme
-│   └── app.js         # Frontend logic
-├── logo.png
-├── screenshot/
-├── LICENSE            # MIT
-└── README.md
-```
-
-## Tech Stack
-
-- **Backend**: Python stdlib (`http.server`, `json`, `threading`) -- no pip install needed
-- **Frontend**: Vanilla JS + [ApexCharts](https://apexcharts.com/) + [Phosphor Icons](https://phosphoricons.com/) + [Notyf](https://github.com/caroso1222/notyf)
-- **Data**: Reads Claude Code's JSONL session files directly from `~/.claude/`
-
-## How It Works
-
-1. Claude Code CLI stores session data as JSONL files in `~/.claude/projects/`
-2. CCDash's backend scans these files and aggregates token usage, model distribution, and session metadata
-3. The frontend polls the backend API and renders real-time charts and metrics
-4. Optionally, the Swift helper fetches subscription utilization data from claude.ai
-
-## License
-
-[MIT](LICENSE)
+> 💡 The session key lasts weeks. CCDash will show a warning when it expires.
 
 ---
 
-## 中文文档
+## 🌐 Remote Monitoring
 
-### CCDash 是什么？
-
-CCDash 是一个自托管的实时分析面板，用于监控你的 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 使用情况。它直接读取 Claude Code 的本地数据文件，无需 API Key，支持订阅计划。
-
-> **注意**：这是一个社区项目，与 Anthropic 无关。
-
-### 界面预览
-
-| 概览（暗色） | 概览（亮色） |
-|:---:|:---:|
-| ![](screenshot/overview-dark.png) | ![](screenshot/overview-light.png) |
-
-| 分析 | 实时监控 |
-|:---:|:---:|
-| ![](screenshot/analytics.png) | ![](screenshot/live.png) |
-
-### 功能特性
-
-- **实时监控** -- API 调用实时流，RPM/TPM 指标
-- **成本估算** -- 基于 Anthropic 官方定价的单次和累计成本
-- **多源聚合** -- 通过轻量 Agent 监控本地和远程服务器
-- **订阅用量追踪** -- 5 小时和 7 天滚动窗口使用率（通过 claude.ai）
-- **丰富分析** -- 每日趋势、模型分布、缓存分析、活动热力图
-- **会话浏览** -- 搜索和筛选对话会话
-- **深色/浅色主题** -- 现代化 UI
-- **中英双语** -- 完整的中英文界面
-- **零依赖** -- 纯 Python 后端，原生 JS 前端
-
-### 快速开始
+Monitor multiple machines from one dashboard:
 
 ```bash
-git clone https://github.com/user/CCDash.git
-cd CCDash
-chmod +x start.sh
-./start.sh
+# 📡 On remote server
+python3 agent.py --port 8421 --token my_secret
+
+# 🔒 On local machine (SSH tunnel)
+ssh -L 8421:127.0.0.1:8421 user@server -N -f
 ```
 
-首次运行时，`start.sh` 会从模板创建 `config.json` 并提示你编辑。
-
-或直接运行：
-
-```bash
-cp config.example.json config.json
-python3 server.py
-```
-
-在浏览器中打开 **http://localhost:8420**。
-
-### 配置说明
-
-编辑 `config.json`：
-
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `remotes` | 否 | 远程 Agent 端点列表，用于多服务器监控 |
-| `claude_session_key` | 否 | claude.ai 的 Session Key，用于订阅用量追踪 |
-| `claude_org_id` | 否 | claude.ai 的组织 ID |
-
-#### 获取 Session Key（可选）
-
-1. 登录 [claude.ai](https://claude.ai)
-2. 打开开发者工具 (F12) -> Application -> Cookies
-3. 复制 `sessionKey` 的值
-4. 在 URL 或网络请求中找到组织 ID
-
-### 远程监控
-
-在远程服务器上部署 `agent.py`：
-
-```bash
-# 远程服务器
-python3 agent.py --port 8421 --token your_secret_token
-```
-
-在本地 `config.json` 中添加远程节点：
+Add to `config.json`:
 
 ```json
 {
   "remotes": [
     {
-      "name": "云服务器",
-      "url": "http://server-ip:8421",
-      "token": "your_secret_token",
+      "name": "GPU Server",
+      "url": "http://127.0.0.1:8421",
+      "token": "my_secret",
       "enabled": true
     }
   ]
 }
 ```
 
-也可以使用 SSH 隧道进行安全访问：
+Projects from remote servers are tagged with `CLOUD` badges in the dashboard.
+
+---
+
+## 🏗️ Architecture
+
+```
+~/.claude/projects/  ←── Claude Code writes JSONL session files here
+        │
+        ▼
+   ┌─────────┐     ┌───────────┐
+   │ server.py│────▶│  web UI   │  ← http://localhost:8420
+   └────┬────┘     └───────────┘
+        │
+        ├── Scans JSONL files for token usage & session data
+        ├── Calculates cost per call using official pricing
+        ├── (Optional) Calls claude.ai API for quota data
+        └── (Optional) Aggregates remote agent.py data
+```
+
+### Tech Stack
+
+| Layer | Technology | Why |
+|:------|:-----------|:----|
+| Backend | Python stdlib | Zero install, runs everywhere |
+| Frontend | Vanilla JS | No build step, instant load |
+| Charts | [ApexCharts](https://apexcharts.com/) | Beautiful, interactive |
+| Icons | [Phosphor](https://phosphoricons.com/) | Clean, consistent |
+| Quota | Swift (macOS) | Bypasses Cloudflare for claude.ai API |
+
+---
+
+## 📁 Project Structure
+
+```
+CCDash/
+├── 🐍 server.py            # Dashboard backend (Python stdlib)
+├── 📡 agent.py             # Remote monitoring agent
+├── 🍎 fetch-usage.swift    # macOS quota fetcher
+├── 🔧 config.example.json  # Config template
+├── 🚀 start.sh             # One-click launcher
+├── 🌐 web/
+│   ├── index.html          # SPA shell
+│   ├── style.css           # Dark slate + emerald theme
+│   └── app.js              # All frontend logic
+├── 🖼️ screenshot/
+├── 📄 LICENSE              # MIT
+└── 📖 README.md
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Feel free to open issues or PRs.
+
+## 📄 License
+
+[MIT](LICENSE) — Use it however you want.
+
+---
+
+<div align="center">
+
+# 中文文档
+
+</div>
+
+## ✨ CCDash 是什么？
+
+CCDash 是一个**自托管的实时分析面板**，用于监控 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 的使用情况。
+
+它直接读取本地数据文件——**无需 API Key**，完美支持订阅用户。
+
+> 📌 社区项目，与 Anthropic 无关联。
+
+### 为什么需要 CCDash？
+
+你在用 Claude 订阅，但你知道吗：
+
+- 💸 你的使用量如果按 API 计费要花多少钱？
+- 📊 哪个模型消耗了最多的 Token？缓存命中率如何？
+- ⏱️ 平均响应时间是多少？是否在变慢？
+- 🔥 离限速还有多远？5小时/7天额度用了多少？
+
+**目前没有任何工具为 Claude Code 订阅用户提供这些数据。** CCDash 填补了这个空白。
+
+---
+
+## 🖼️ 界面预览
+
+<table>
+  <tr>
+    <td align="center"><strong>🌙 概览 · 暗色</strong></td>
+    <td align="center"><strong>☀️ 概览 · 亮色</strong></td>
+  </tr>
+  <tr>
+    <td><img src="screenshot/overview-dark.png"></td>
+    <td><img src="screenshot/overview-light.png"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>📊 深度分析</strong></td>
+    <td align="center"><strong>📡 实时监控</strong></td>
+  </tr>
+  <tr>
+    <td><img src="screenshot/analytics.png"></td>
+    <td><img src="screenshot/live.png"></td>
+  </tr>
+</table>
+
+---
+
+## 🚀 快速开始
 
 ```bash
+git clone https://github.com/zihenghe04/CCDash.git
+cd CCDash
+python3 server.py
+```
+
+打开 👉 **http://localhost:8420**
+
+无需 `pip install`，无需 `npm`，无需 Docker。只要有 Python 就行。
+
+---
+
+## ⚙️ 配置说明
+
+```bash
+cp config.example.json config.json
+```
+
+| 字段 | 必填 | 说明 |
+|:-----|:----:|:-----|
+| `remotes` | ❌ | 远程 Agent 端点，用于多服务器聚合 |
+| `claude_session_key` | ❌ | claude.ai Session Key，启用额度追踪 |
+| `claude_org_id` | ❌ | claude.ai 组织 ID |
+
+### 🔑 获取 Session Key（可选）
+
+1. 登录 [claude.ai](https://claude.ai)
+2. 按 `F12` 打开开发者工具 → **Application** → **Cookies**
+3. 复制 `sessionKey` 值
+4. 在网络请求中找到 `organizations/{org_id}/` 中的组织 ID
+
+> 💡 Session Key 一般能持续数周。过期后面板会显示警告。
+
+---
+
+## 🌐 远程监控
+
+在远程服务器部署 Agent，一个面板查看所有机器：
+
+```bash
+# 📡 远程服务器
+python3 agent.py --port 8421 --token your_secret
+
+# 🔒 本地 SSH 隧道
 ssh -L 8421:127.0.0.1:8421 user@server -N -f
 ```
 
-### 许可证
+在 `config.json` 中添加：
 
-[MIT](LICENSE)
+```json
+{
+  "remotes": [{
+    "name": "云服务器",
+    "url": "http://127.0.0.1:8421",
+    "token": "your_secret",
+    "enabled": true
+  }]
+}
+```
+
+远程项目在面板中会显示 `CLOUD` 标签。
+
+---
+
+## 📄 许可证
+
+[MIT](LICENSE) — 随便用。
+
+<div align="center">
+  <br>
+  <p><sub>Built with ☕ and curiosity</sub></p>
+</div>
