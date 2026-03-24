@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CCDash</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/countup.js@2.8.0/dist/countUp.umd.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
+<script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="dark">
+
+<!-- Loading overlay -->
+<div class="ld-ov" id="ldOv">
+  <div class="ld-logo">CC</div>
+  <div class="ld-txt" id="ldTxt" data-i="loading">Loading...</div>
+  <div class="ld-bar-wrap"><div class="ld-bar-fill"></div></div>
+</div>
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">CC</div>
+    <div class="sidebar-brand">
+      <span class="sidebar-title">CCDash</span>
+      <span class="sidebar-subtitle">Dashboard</span>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <a class="nav-item active" data-page="overview" onclick="switchPage('overview')">
+      <i class="ph ph-squares-four"></i>
+      <span data-i="navOverview">Overview</span>
+    </a>
+    <a class="nav-item" data-page="analytics" onclick="switchPage('analytics')">
+      <i class="ph ph-chart-line-up"></i>
+      <span data-i="navAnalytics">Analytics</span>
+    </a>
+    <a class="nav-item" data-page="live" onclick="switchPage('live')">
+      <i class="ph ph-pulse"></i>
+      <span data-i="navLive">Live Stream</span>
+      <span class="nav-badge" id="liveBadge">0</span>
+    </a>
+    <a class="nav-item" data-page="logs" onclick="switchPage('logs')">
+      <i class="ph ph-list-bullets"></i>
+      <span data-i="navLogs">System Logs</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="sidebar-btn" onclick="toggleLang()" id="langBtn" title="Language">
+      <i class="ph ph-translate"></i> <span>EN</span>
+    </button>
+    <button class="sidebar-btn" onclick="toggleTheme()" id="themeBtn" title="Theme">
+      <i class="ph ph-moon"></i>
+    </button>
+    <button class="sidebar-btn" onclick="refreshAll()" title="Refresh">
+      <i class="ph ph-arrows-clockwise"></i>
+    </button>
+  </div>
+</aside>
+
+<!-- Main content -->
+<main class="main" id="main">
+
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-title" id="pageTitle" data-i="navOverview">Overview</h1>
+      <span class="meta" id="lastUp"></span>
+    </div>
+  </header>
+
+  <!-- PAGE: Overview -->
+  <div class="page active" id="page-overview">
+    <!-- Gauge + Status row -->
+    <div class="overview-top">
+      <div class="gauge-card card">
+        <div class="gauge-wrap">
+          <!-- 5h Rolling Gauge -->
+          <div class="gauge-group">
+            <svg class="gauge" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--bg-4)" stroke-width="8"/>
+              <circle class="gauge-fill" id="gaugeFill" cx="60" cy="60" r="52" fill="none" stroke="var(--green)" stroke-width="8" stroke-linecap="round" stroke-dasharray="326.73" stroke-dashoffset="326.73" transform="rotate(-90 60 60)"/>
+              <text x="60" y="52" text-anchor="middle" class="gauge-value" id="gaugeVal">0%</text>
+              <text x="60" y="68" text-anchor="middle" class="gauge-label">5H</text>
+            </svg>
+            <div class="gauge-timer"><i class="ph ph-clock"></i> <span class="cd" id="cd">--:--:--</span></div>
+          </div>
+          <!-- Weekly Token Gauge -->
+          <div class="gauge-group">
+            <svg class="gauge" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--bg-4)" stroke-width="8"/>
+              <circle class="gauge-fill" id="weekGaugeFill" cx="60" cy="60" r="52" fill="none" stroke="var(--blue)" stroke-width="8" stroke-linecap="round" stroke-dasharray="326.73" stroke-dashoffset="326.73" transform="rotate(-90 60 60)"/>
+              <text x="60" y="52" text-anchor="middle" class="gauge-value" id="weekGaugeVal">—</text>
+              <text x="60" y="68" text-anchor="middle" class="gauge-label">7D</text>
+            </svg>
+            <div class="gauge-sub" id="weekTokens">— tokens</div>
+          </div>
+          <div class="gauge-meta">
+            <div class="gauge-plan"><span data-i="plan">Plan</span>: <b id="pName">—</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="today-card card">
+        <div class="today-row">
+          <div class="today-item"><span class="today-num" id="tMsg">0</span><span class="today-label" data-i="msgs">Messages</span></div>
+          <div class="today-item"><span class="today-num" id="tSes">0</span><span class="today-label" data-i="sessions_l">Sessions</span></div>
+          <div class="today-item"><span class="today-num" style="color:var(--orange)" id="rpmVal">0</span><span class="today-label">RPM</span></div>
+          <div class="today-item"><span class="today-num" style="color:var(--cyan,var(--blue))" id="tpmVal">0</span><span class="today-label">TPM</span></div>
+        </div>
+        <div class="today-row" style="margin-top:8px">
+          <div class="today-item"><span class="today-num" style="font-size:20px;color:var(--purple)" id="avgDurVal">—</span><span class="today-label" data-i="avgDuration">Avg Duration</span></div>
+          <div class="today-item"><span class="today-num" style="font-size:20px;color:var(--green)" id="avgTtftVal">—</span><span class="today-label" data-i="avgTtft">Avg TTFT</span></div>
+        </div>
+        <div class="week-bar">
+          <span class="week-label" data-i="weekUsage">Weekly</span>
+          <div class="week-dots" id="weekDots"></div>
+          <span class="week-val" id="weekPct">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="stat-cards">
+      <div class="stat-card card">
+        <div class="stat-header"><div class="stat-icon si-a"><i class="ph ph-chat-circle"></i></div><span class="stat-badge" id="bdToday">—</span></div>
+        <div class="stat-value" id="cMsg">—</div>
+        <div class="stat-label" data-i="totalMsgs">Total Messages</div>
+        <svg class="sparkline" id="sparkMsgs" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+        <div class="stat-sub"><span><span data-i="sessions_l">Sessions</span>: <b id="cSes">—</b></span><span><span data-i="projects">Projects</span>: <b id="cProj">—</b></span></div>
+      </div>
+      <div class="stat-card card">
+        <div class="stat-header"><div class="stat-icon si-b"><i class="ph ph-coins"></i></div><span class="cost-badge" id="totalCost">$0.00</span></div>
+        <div class="stat-value" id="cTok">—</div>
+        <div class="stat-label" data-i="totalTokens">Total Tokens</div>
+        <svg class="sparkline" id="sparkTokens" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+        <div class="stat-sub"><span><span class="tk-in">↓</span> <b id="cIn">—</b></span><span><span class="tk-out">↑</span> <b id="cOut">—</b></span></div>
+      </div>
+      <div class="stat-card card">
+        <div class="stat-header"><div class="stat-icon si-g"><i class="ph ph-lightning"></i></div></div>
+        <div class="stat-value" id="cCR">—</div>
+        <div class="stat-label" data-i="cacheHit">Cache Hit</div>
+        <svg class="sparkline" id="sparkCache" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+        <div class="stat-sub"><span><span data-i="cacheCreate">Created</span>: <b id="cCC">—</b></span><span><span data-i="hitRate">Hit Rate</span>: <b id="cRate">—</b></span></div>
+      </div>
+      <div class="stat-card card">
+        <div class="stat-header"><div class="stat-icon si-p"><i class="ph ph-cpu"></i></div></div>
+        <div class="stat-value" id="cModels">—</div>
+        <div class="stat-label" data-i="modelCount">Models</div>
+        <svg class="sparkline" id="sparkModels" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+        <div class="stat-sub"><span><span data-i="todayCalls">Today</span>: <b id="cTodayCalls">—</b></span><span><span data-i="todayTools">Tools</span>: <b id="cTodayTools">—</b></span></div>
+      </div>
+    </div>
+
+    <!-- Active sessions -->
+    <div id="activeSessionsWrap" style="display:none">
+      <div class="active-card card">
+        <div class="active-head"><div class="active-title"><span class="live-dot"></span> <span data-i="activeSessions">Active Sessions</span></div><span class="active-count" id="activeCount">0</span></div>
+        <div class="active-list" id="activeList"></div>
+      </div>
+    </div>
+
+    <!-- Charts section -->
+    <div class="card chart-section">
+      <div class="chart-header">
+        <div><div class="sec-title" data-i="dailyTrend">Daily Trend</div><div class="sec-desc" data-i="dailyTrendDesc">Messages, sessions and tool calls</div></div>
+        <div class="chart-controls">
+          <div class="tabs"><div class="tab on" onclick="swTab('act')" data-i="dailyTrend">Trend</div><div class="tab" onclick="swTab('tok')" data-i="tokenDist">Token</div><div class="tab" onclick="swTab('hm')" data-i="heatmap">Heatmap</div></div>
+          <div class="range-pills"><div class="pill on" onclick="setRange('7d')">7D</div><div class="pill" onclick="setRange('14d')">14D</div><div class="pill" onclick="setRange('30d')">30D</div><div class="pill" onclick="setRange('60d')">60D</div><div class="pill" onclick="setRange('90d')">90D</div></div>
+        </div>
+      </div>
+      <div class="ch-wrap" id="pAct"><div id="chartAct"></div></div>
+      <div class="ch-wrap" id="pTok" style="display:none"><div id="chartTok"></div></div>
+      <div class="ch-wrap hm-wrap" id="pHm" style="display:none"><div id="chartHm"></div></div>
+    </div>
+  </div>
+
+  <!-- PAGE: Analytics -->
+  <div class="page" id="page-analytics">
+    <div class="analytics-grid">
+      <div class="card sec"><div class="sec-title"><i class="ph ph-cpu"></i> <span data-i="modelUsage">Model Usage</span></div><div class="sec-desc" data-i="modelUsageDesc">Token usage and cache efficiency</div><div class="tw"><table><thead><tr><th data-i="model">Model</th><th data-i="input">Input</th><th data-i="output">Output</th><th data-i="cacheRead">Cache R</th><th data-i="cacheCreate">Cache W</th><th data-i="calls">Calls</th><th data-i="hitRate">Hit%</th><th>Cost</th></tr></thead><tbody id="tbMod"></tbody></table></div></div>
+      <div class="card sec"><div class="sec-title"><i class="ph ph-chart-pie-slice"></i> <span data-i="cacheAnalysis">Cache Analysis</span></div><div class="sec-desc" data-i="cacheAnalysisDesc">Cache hit rate distribution</div><div class="ring-c"><div class="ring-ch" id="chartRing"></div><div class="ring-info"><div data-i="cacheHit">Cache Hit</div><div class="ring-val"><span id="rlH">—</span></div><div data-i="cacheCreate">Cache Create</div><div class="ring-val"><span id="rlC">—</span></div><div data-i="directInput">Direct Input</div><div class="ring-val"><span id="rlD">—</span></div></div></div></div>
+    </div>
+    <div class="card sec"><div class="sec-title"><i class="ph ph-folder"></i> <span data-i="projectTop">Project TOP 10</span></div><div class="sec-desc" data-i="projectTopDesc">Projects by token usage</div><div class="tw"><table><thead><tr><th data-i="project">Project</th><th data-i="msgs">Msgs</th><th data-i="sessions_l">Sessions</th><th>Token</th><th>%</th></tr></thead><tbody id="tbProj"></tbody></table></div></div>
+  </div>
+
+  <!-- PAGE: Live Stream -->
+  <div class="page" id="page-live">
+    <div class="card sec">
+      <div class="sec-header"><div><div class="sec-title"><span class="live-dot"></span> <span data-i="liveLog">Today Live</span></div><div class="sec-desc" data-i="liveLogDesc">Real-time API call monitoring</div></div><span class="meta" id="liveN">0</span></div>
+      <div class="tw" style="max-height:460px;overflow-y:auto"><table><thead><tr><th data-i="time">Time</th><th data-i="model">Model</th><th data-i="project">Project</th><th><span class="tk-in">↓</span> Input</th><th><span class="tk-out">↑</span> Output</th><th><span class="tk-cr">⟲</span> Cache R</th><th><span class="tk-cw">⟳</span> Cache W</th><th style="color:var(--green)">$ Cost</th></tr></thead><tbody id="tbLive"></tbody></table></div>
+      <div class="totals"><div class="ti"><span class="tl">Calls</span><span class="tv" id="lCalls">0</span></div><div class="ti"><span class="tl tk-in">↓ Input</span><span class="tv" id="lIn">0</span></div><div class="ti"><span class="tl tk-out">↑ Output</span><span class="tv" id="lOut">0</span></div><div class="ti"><span class="tl tk-cr">⟲ Cache R</span><span class="tv" id="lCR">0</span></div><div class="ti"><span class="tl tk-cw">⟳ Cache W</span><span class="tv" id="lCC">0</span></div><div class="ti"><span class="tl" style="color:var(--green)">$ Cost</span><span class="tv" style="color:var(--green)" id="lCost">$0</span></div></div>
+    </div>
+  </div>
+
+  <!-- PAGE: System Logs -->
+  <div class="page" id="page-logs">
+    <div class="filter-panel card">
+      <div class="filter-header" id="filterToggle" onclick="toggleFilter()">
+        <div class="filter-title"><i class="ph ph-funnel"></i> <span data-i="filterTitle">Filters</span></div>
+        <i class="ph ph-caret-down filter-chevron"></i>
+      </div>
+      <div class="filter-body" id="filterBody">
+        <div class="filter-row">
+          <div class="filter-group"><label data-i="startDate">Start</label><input type="datetime-local" class="filter-input" id="filterStart"></div>
+          <div class="filter-group"><label data-i="endDate">End</label><input type="datetime-local" class="filter-input" id="filterEnd"></div>
+          <div class="filter-group"><label data-i="model">Model</label><select class="filter-select" id="filterModel"><option value="" data-i="allModels">All Models</option></select></div>
+          <div class="filter-group"><label data-i="project">Project</label><select class="filter-select" id="filterProject"><option value="" data-i="allProjects">All Projects</option></select></div>
+          <div class="filter-actions">
+            <button class="btn btn-accent" onclick="applyLogFilters()"><i class="ph ph-check"></i> <span data-i="apply">Apply</span></button>
+            <button class="btn" onclick="resetLogFilters()"><i class="ph ph-x"></i> <span data-i="resetFilters">Reset</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card sec">
+      <div class="sec-header">
+        <div><div class="sec-title"><i class="ph ph-list-bullets"></i> <span data-i="usageLog">Usage Logs</span></div><div class="sec-desc" data-i="usageLogDesc">Detailed API call records</div></div>
+        <div class="sec-header-right"><span class="meta" id="logTotal">—</span><button class="auto-refresh-btn active" id="autoRefreshBtn" onclick="toggleAutoRefresh()"><span class="ar-dot"></span><span id="autoRefreshText" data-i="stopAutoRefresh">Stop Auto-refresh</span></button></div>
+      </div>
+      <div class="tw"><table><thead><tr><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="model">Model</th><th><span class="tk-in">↓</span> Input</th><th><span class="tk-out">↑</span> Output</th><th><span class="tk-cw">⟳</span> Cache W</th><th><span class="tk-cr">⟲</span> Cache R</th><th style="color:var(--green)">$ Cost</th><th data-i="ttft">TTFT</th><th data-i="duration">Duration</th><th data-i="status">Status</th></tr></thead><tbody id="tbLogs"></tbody></table></div>
+      <div class="pagination">
+        <div class="pagination-left">
+          <div class="pagination-info" id="paginationInfo">—</div>
+          <select id="logLimitSel" class="page-size-select" onchange="logLimit=parseInt(this.value);logPage=0;loadLogs()"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select>
+          <span class="pagination-per" data-i="perPage">per page</span>
+        </div>
+        <div class="pagination-btns" id="paginationBtns"></div>
+      </div>
+    </div>
+    <!-- Session browser -->
+    <div class="card sec">
+      <div class="sec-title" style="justify-content:space-between"><span><i class="ph ph-clock-counter-clockwise"></i> <span data-i="recentSessions">Recent Sessions</span></span><select id="sFilt" onchange="loadSess()" class="filter-select" style="min-width:120px"><option value="" data-i="allProjects">All</option></select></div>
+      <div class="sec-desc" data-i="recentSessionsDesc">Recently active sessions</div>
+      <div class="search-box"><input class="search-input" id="sSearch" oninput="debounceSearch()" placeholder="Search sessions..."><button class="btn" onclick="loadSess()"><i class="ph ph-magnifying-glass"></i> <span data-i="search">Search</span></button></div>
+      <div class="tw" style="max-height:400px;overflow-y:auto"><table><thead><tr><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="content">Content</th></tr></thead><tbody id="tbSess"></tbody></table></div>
+    </div>
+  </div>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
