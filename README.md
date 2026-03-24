@@ -33,7 +33,20 @@ CCDash is a self-hosted, real-time analytics dashboard that monitors your [Claud
 
 ## Screenshots
 
-> Screenshots coming soon. Run the dashboard and take a look!
+### Overview — Dark Mode
+![Overview Dark](screenshot/overview-dark.png)
+
+### Overview — Light Mode
+![Overview Light](screenshot/overview-light.png)
+
+### Analytics
+![Analytics](screenshot/analytics.png)
+
+### Live Stream
+![Live Stream](screenshot/live.png)
+
+### System Logs
+![Logs](screenshot/logs.png)
 
 ## Quick Start
 
@@ -165,6 +178,16 @@ CCDash/
 CCDash 是一个自托管的实时分析面板，用于监控你的 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 使用情况。它直接读取 Claude Code 的本地数据文件，无需 API Key，支持订阅计划。
 
 > **注意**：这是一个社区项目，与 Anthropic 无关。
+
+### 界面预览
+
+| 概览（暗色） | 概览（亮色） |
+|:---:|:---:|
+| ![](screenshot/overview-dark.png) | ![](screenshot/overview-light.png) |
+
+| 分析 | 实时监控 |
+|:---:|:---:|
+| ![](screenshot/analytics.png) | ![](screenshot/live.png) |
 
 ### 功能特性
 
