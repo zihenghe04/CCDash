@@ -84,22 +84,22 @@ You're paying for a Claude subscription. But do you actually know:
     <td align="center"><strong>☀️ Overview — Light</strong></td>
   </tr>
   <tr>
-    <td><img src="screenshot/overview-dark.png" alt="Overview Dark"></td>
-    <td><img src="screenshot/overview-light.png" alt="Overview Light"></td>
+    <td><img src="screenshot/overview-dark.png" alt="Overview Dark" width="100%"></td>
+    <td><img src="screenshot/overview-light.png" alt="Overview Light" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>📊 Analytics</strong></td>
     <td align="center"><strong>📡 Live Stream</strong></td>
   </tr>
   <tr>
-    <td><img src="screenshot/analytics.png" alt="Analytics"></td>
-    <td><img src="screenshot/live.png" alt="Live Stream"></td>
+    <td><img src="screenshot/analytics.png" alt="Analytics" width="100%"></td>
+    <td><img src="screenshot/live.png" alt="Live Stream" width="100%"></td>
   </tr>
   <tr>
     <td align="center" colspan="2"><strong>📋 System Logs</strong></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="screenshot/logs.png" alt="Logs"></td>
+    <td colspan="2"><img src="screenshot/logs.png" alt="Logs" width="100%"></td>
   </tr>
 </table>
 
@@ -285,16 +285,16 @@ CCDash 是一个**自托管的实时分析面板**，用于监控 [Claude Code](
     <td align="center"><strong>☀️ 概览 · 亮色</strong></td>
   </tr>
   <tr>
-    <td><img src="screenshot/overview-dark.png"></td>
-    <td><img src="screenshot/overview-light.png"></td>
+    <td><img src="screenshot/overview-dark.png" width="100%"></td>
+    <td><img src="screenshot/overview-light.png" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><strong>📊 深度分析</strong></td>
     <td align="center"><strong>📡 实时监控</strong></td>
   </tr>
   <tr>
-    <td><img src="screenshot/analytics.png"></td>
-    <td><img src="screenshot/live.png"></td>
+    <td><img src="screenshot/analytics.png" width="100%"></td>
+    <td><img src="screenshot/live.png" width="100%"></td>
   </tr>
 </table>
 
