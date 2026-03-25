@@ -261,6 +261,10 @@ CCDash/
 
 ---
 
+## 📋 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full release history.
+
 ## 🤝 Contributing
 
 Contributions welcome! Feel free to open issues or PRs.
