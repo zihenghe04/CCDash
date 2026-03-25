@@ -87,11 +87,13 @@ You're paying for a Claude subscription. But do you actually know:
 
 ---
 
+
+
+
+
 ## 🎬 Demo
+https://github.com/user-attachments/assets/4373ee6a-a8d2-4bba-beba-e730ca015b94
 
-https://github.com/user-attachments/assets/placeholder
-
-> 👆 If video doesn't load, download [demo.mp4](demo.mp4) directly.
 
 ## 🖼️ Screenshots
 
