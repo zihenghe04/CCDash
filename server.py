@@ -209,10 +209,9 @@ def _merge_live(local_live, remote_data_list):
 # 工具函数
 # ============================================================
 def friendly_project_name(dir_name: str) -> str:
-    """"-Users-czx-Desktop-SEU-Thesis-LaTeX" → "SEU-Thesis-LaTeX" """
+    """"-Users-john-Desktop-MyProject" → "MyProject" """
     parts = dir_name.strip("-").split("-")
-    # 找到最后一个有意义的段
-    # 跳过 Users, czx, Desktop, Documents 等路径前缀
+    # Skip common path prefixes to extract meaningful project name
     skip = {"users", "user", "home", "desktop", "documents", "downloads", "projects", "workspace"}
     meaningful = [p for p in parts if p.lower() not in skip and len(p) > 1]
     if meaningful:
