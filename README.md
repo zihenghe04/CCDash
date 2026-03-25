@@ -87,6 +87,12 @@ You're paying for a Claude subscription. But do you actually know:
 
 ---
 
+## 🎬 Demo
+
+https://github.com/user-attachments/assets/demo.mp4
+
+> 👆 If the video doesn't load, download [demo.mp4](demo.mp4) directly.
+
 ## 🖼️ Screenshots
 
 <table>
