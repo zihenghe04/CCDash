@@ -84,23 +84,43 @@
     <div class="overview-top">
       <div class="gauge-card card">
         <div class="gauge-wrap">
-          <!-- 5h Rolling Gauge -->
-          <div class="gauge-group">
-            <svg class="gauge" viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--bg-4)" stroke-width="8"/>
-              <circle class="gauge-fill" id="gaugeFill" cx="60" cy="60" r="52" fill="none" stroke="var(--green)" stroke-width="8" stroke-linecap="round" stroke-dasharray="326.73" stroke-dashoffset="326.73" transform="rotate(-90 60 60)"/>
-              <text x="60" y="52" text-anchor="middle" class="gauge-value" id="gaugeVal">0%</text>
-              <text x="60" y="68" text-anchor="middle" class="gauge-label">5H</text>
+          <!-- 5h HUD Gauge -->
+          <div class="hud-gauge" id="hud5h">
+            <svg viewBox="0 0 200 120" class="hud-svg">
+              <defs>
+                <linearGradient id="g5h" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#00ff88"/><stop offset="40%" stop-color="#4ade80"/><stop offset="70%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#00e5ff"/></linearGradient>
+                <linearGradient id="g7d" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#4facfe"/><stop offset="40%" stop-color="#60a5fa"/><stop offset="70%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#e040fb"/></linearGradient>
+                <filter id="glow5h"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <!-- Segmented track (half-circle arc) -->
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--bg-4)" stroke-width="4" opacity="0.3"/>
+              <!-- Tick marks on arc -->
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--bg-5)" stroke-width="4" stroke-dasharray="2 22.8" opacity="0.4"/>
+              <!-- Fill arc -->
+              <path class="hud-fill" id="gaugeFill" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#g5h)" stroke-width="8" stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="251.33" filter="url(#glow5h)"/>
+              <!-- Scanning line -->
+              <line class="hud-scan" x1="100" y1="100" x2="100" y2="22" stroke="url(#g5h)" stroke-width="1" opacity="0.15"/>
+              <!-- Center value -->
+              <text x="100" y="78" text-anchor="middle" class="hud-value" id="gaugeVal">0%</text>
+              <text x="100" y="95" text-anchor="middle" class="hud-label">5H WINDOW</text>
+              <!-- Min/Max labels -->
+              <text x="22" y="115" class="hud-tick-label">0</text>
+              <text x="178" y="115" class="hud-tick-label">100</text>
             </svg>
             <div class="gauge-timer"><i class="ph ph-clock"></i> <span class="cd" id="cd">--:--:--</span></div>
           </div>
-          <!-- Weekly Token Gauge -->
-          <div class="gauge-group">
-            <svg class="gauge" viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--bg-4)" stroke-width="8"/>
-              <circle class="gauge-fill" id="weekGaugeFill" cx="60" cy="60" r="52" fill="none" stroke="var(--blue)" stroke-width="8" stroke-linecap="round" stroke-dasharray="326.73" stroke-dashoffset="326.73" transform="rotate(-90 60 60)"/>
-              <text x="60" y="52" text-anchor="middle" class="gauge-value" id="weekGaugeVal">—</text>
-              <text x="60" y="68" text-anchor="middle" class="gauge-label">7D</text>
+          <!-- 7d HUD Gauge -->
+          <div class="hud-gauge" id="hud7d">
+            <svg viewBox="0 0 200 120" class="hud-svg">
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--bg-4)" stroke-width="4" opacity="0.3"/>
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--bg-5)" stroke-width="4" stroke-dasharray="2 22.8" opacity="0.4"/>
+              <filter id="glow7d"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <path class="hud-fill" id="weekGaugeFill" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#g7d)" stroke-width="8" stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="251.33" filter="url(#glow7d)"/>
+              <line class="hud-scan" x1="100" y1="100" x2="100" y2="22" stroke="url(#g7d)" stroke-width="1" opacity="0.15"/>
+              <text x="100" y="78" text-anchor="middle" class="hud-value" id="weekGaugeVal">—</text>
+              <text x="100" y="95" text-anchor="middle" class="hud-label">7D WINDOW</text>
+              <text x="22" y="115" class="hud-tick-label">0</text>
+              <text x="178" y="115" class="hud-tick-label">100</text>
             </svg>
             <div class="gauge-sub" id="weekTokens">— tokens</div>
           </div>

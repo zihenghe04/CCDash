@@ -456,6 +456,12 @@ class AgentHandler(BaseHTTPRequestHandler):
                 else:
                     result = self._get_session_detail(sid)
                     self.send_json(result)
+            elif path == "/api/session-chain":
+                sid = params.get("id", [""])[0]
+                if not sid:
+                    self.send_json({"error": "missing id"}, 400)
+                else:
+                    self.send_json(self._get_session_chain(sid))
             else:
                 self.send_json({"error": "Not found"}, 404)
         except Exception as e:
@@ -644,6 +650,61 @@ class AgentHandler(BaseHTTPRequestHandler):
                 "files_touched": files_touched,
             }
         }
+
+    def _get_session_chain(self, session_id):
+        """Find all sessions in the same project directory"""
+        target_dir = None
+        if PROJECTS_DIR.exists():
+            for pd in PROJECTS_DIR.iterdir():
+                if not pd.is_dir():
+                    continue
+                if (pd / f"{session_id}.jsonl").exists():
+                    target_dir = pd
+                    break
+                for jf in pd.glob("*.jsonl"):
+                    try:
+                        with open(jf, "r", encoding="utf-8", errors="replace") as f:
+                            for i, line in enumerate(f):
+                                if i > 5: break
+                                if not line.strip(): continue
+                                if json.loads(line.strip()).get("sessionId") == session_id:
+                                    target_dir = pd
+                                    break
+                        if target_dir: break
+                    except: continue
+                if target_dir: break
+
+        if not target_dir:
+            return {"chain": [], "total": 0}
+
+        chain = []
+        for jf in sorted(target_dir.glob("*.jsonl")):
+            try:
+                sid = jf.stem
+                first_ts = last_ts = None
+                msg_count = 0
+                total_cost = 0.0
+                model = ""
+                with open(jf, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line: continue
+                        try: evt = json.loads(line)
+                        except: continue
+                        ts = evt.get("timestamp", "")
+                        if ts and not first_ts: first_ts = ts
+                        if ts: last_ts = ts
+                        if evt.get("type") == "user": msg_count += 1
+                        elif evt.get("type") == "assistant" and isinstance(evt.get("message"), dict):
+                            usage = evt["message"].get("usage", {})
+                            m = evt["message"].get("model", "")
+                            if m: model = m
+                            total_cost += _calc_cost(m, usage.get("input_tokens",0) or 0, usage.get("output_tokens",0) or 0, usage.get("cache_read_input_tokens",0) or 0, usage.get("cache_creation_input_tokens",0) or 0)
+                chain.append({"session_id": sid, "first_ts": first_ts, "last_ts": last_ts, "messages": msg_count, "cost_usd": round(total_cost, 4), "model": model, "is_current": sid == session_id})
+            except: continue
+
+        chain.sort(key=lambda x: x.get("first_ts") or "", reverse=True)
+        return {"chain": chain[:30], "total": len(chain), "project": friendly_project_name(target_dir.name)}
 
 
 class ThreadedServer(ThreadingMixIn, HTTPServer):
