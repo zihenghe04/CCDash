@@ -89,9 +89,10 @@ You're paying for a Claude subscription. But do you actually know:
 
 ## 🎬 Demo
 
-https://github.com/user-attachments/assets/demo.mp4
+<!-- Replace the link below with the GitHub-hosted video URL after uploading -->
+<!-- To upload: Edit this README on GitHub, drag demo.mp4 into the editor -->
 
-> 👆 If the video doesn't load, download [demo.mp4](demo.mp4) directly.
+> 📺 [Watch Demo Video (2x speed)](demo.mp4)
 
 ## 🖼️ Screenshots
 
@@ -113,10 +114,12 @@ https://github.com/user-attachments/assets/demo.mp4
     <td><img src="screenshot/live.png" alt="Live Stream" width="100%"></td>
   </tr>
   <tr>
-    <td align="center" colspan="2"><strong>📋 System Logs</strong></td>
+    <td align="center"><strong>📋 System Logs</strong></td>
+    <td align="center"><strong>🔍 Session Detail</strong></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="screenshot/logs.png" alt="Logs" width="100%"></td>
+    <td><img src="screenshot/logs.png" alt="Logs" width="100%"></td>
+    <td><img src="screenshot/logs2.png" alt="Session Detail" width="100%"></td>
   </tr>
 </table>
 
@@ -312,6 +315,14 @@ CCDash 是一个**自托管的实时分析面板**，用于监控 [Claude Code](
   <tr>
     <td><img src="screenshot/analytics.png" width="100%"></td>
     <td><img src="screenshot/live.png" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>📋 日志</strong></td>
+    <td align="center"><strong>🔍 会话详情</strong></td>
+  </tr>
+  <tr>
+    <td><img src="screenshot/logs.png" width="100%"></td>
+    <td><img src="screenshot/logs2.png" width="100%"></td>
   </tr>
 </table>
 
