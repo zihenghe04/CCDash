@@ -36,19 +36,24 @@ You're paying for a Claude subscription. But do you actually know:
 
 ### How is this different?
 
-| | CCDash | Claude.ai Settings | NewAPI / One API | API Console |
-|---|:---:|:---:|:---:|:---:|
-| Works with **subscriptions** (no API key) | ✅ | ✅ | ❌ | ❌ |
-| Per-call **cost estimation** | ✅ | ❌ | ✅ | ✅ |
-| **RPM / TPM** metrics | ✅ | ❌ | ✅ | ❌ |
-| **TTFT** & duration tracking | ✅ | ❌ | ✅ | ❌ |
-| **Cache hit rate** analysis | ✅ | ❌ | ✅ | ❌ |
-| **Multi-server** aggregation | ✅ | ❌ | ✅ | ❌ |
-| **Session browser** | ✅ | ❌ | ❌ | ❌ |
-| **5h + 7d quota** tracking | ✅ | ✅ | ❌ | ❌ |
-| Daily trend & heatmap | ✅ | ❌ | ✅ | ✅ |
-| Self-hosted / private | ✅ | — | ✅ | ❌ |
-| Zero dependencies | ✅ | — | ❌ | — |
+| | CCDash | Claude.ai Settings | NewAPI / One API | Karma | Dragon-UI |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Works with **subscriptions** (no API key) | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Per-call **cost estimation** | ✅ | ❌ | ✅ | ✅ | ✅ |
+| **RPM / TPM / burn rate** | ✅ | ❌ | ✅ | ❌ | ✅ |
+| **TTFT** & duration tracking | ✅ | ❌ | ✅ | ❌ | ❌ |
+| **Cache efficiency** grading | ✅ | ❌ | ❌ | ✅ | ✅ |
+| **Session detail** timeline | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **Session chain** tracking | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **Tool / work mode** analytics | ✅ | ❌ | ❌ | ✅ | ✅ |
+| **Coding rhythm** analysis | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **Multi-server** aggregation | ✅ | ❌ | ✅ | ❌ | SSH |
+| **5h + 7d quota** tracking | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Privacy mode** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Data export** (CSV/JSON) | ✅ | ❌ | ✅ | ❌ | ✅ |
+| Day/week **comparison** | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Daily trend & heatmap | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Self-hosted / zero deps | ✅ | — | ❌ | ❌ | ❌ |
 
 > **Note**: CCDash is a community project, not affiliated with Anthropic.
 
@@ -57,22 +62,28 @@ You're paying for a Claude subscription. But do you actually know:
 ## 🚀 Features
 
 ### 📈 Real-time Overview
-> SVG gauge for 5h & 7d quota · RPM/TPM · avg TTFT & duration · sparkline trends
+> HUD-style gauges for 5h & 7d quota with animated scanning line · RPM/TPM · burn rate severity (Extreme → Idle) · usage projection ($/day) · avg TTFT & duration · sparkline trends · day/week comparison with flip-card toggle
 
 ### 💰 Cost Intelligence
-> Per-call cost based on [official pricing](https://docs.anthropic.com/en/docs/about-claude/pricing) · daily cost trend chart · per-model breakdown · total savings vs API
+> Per-call cost based on [official Anthropic pricing](https://docs.anthropic.com/en/docs/about-claude/pricing) · daily cost trend chart · per-model & per-project cost breakdown · cost column in live stream & system logs · cache efficiency grading (Excellent/Good/Fair/Poor)
 
 ### 🔍 Deep Analytics
-> Model distribution donut · cache hit analysis · activity heatmap · project TOP 10
+> Model DNA stacked bar (Opus/Sonnet/Haiku) · tool distribution donut (Read/Edit/Bash/Write) · coding rhythm (morning/afternoon/evening/night) · work mode analysis (Exploration/Building/Execution) · cache hit analysis · activity heatmap · context window usage % · project TOP 10 with costs
+
+### 📋 Session Detail
+> Click any session to open a full conversation timeline modal · user prompts & assistant responses with tool call badges · file operations tracking · session chain visualization (all sessions in the same project) · copy Session ID / `claude --resume` command · privacy mode to blur sensitive content
 
 ### 📡 Live Stream
-> Real-time API call feed · colored token indicators (↓ input ↑ output ⟲ cache read ⟳ cache write)
+> Real-time API call feed · colored token indicators (↓ input ↑ output ⟲ cache read ⟳ cache write) · per-call cost · auto-refresh with pause control
 
 ### 🌐 Multi-Server
-> Deploy lightweight `agent.py` on remote servers · aggregate all usage in one dashboard
+> Deploy lightweight `agent.py` on remote servers · aggregate all usage in one dashboard · remote session detail & chain tracking · SSH tunnel support
 
 ### 🎨 Modern UI
-> Dark/Light theme · Phosphor icons · smooth animations · bilingual (EN/ZH)
+> Dark/Light theme with smooth transition · Phosphor icons · HUD gauges with gradient glow · sliding nav indicator · page transitions · card flip animations · privacy mode · data export (CSV/JSON) · bilingual (EN/ZH)
+
+### 📊 24H / 7D / 30D / Monthly Views
+> Hourly trend (24H) · daily trend with token & cost series · monthly aggregation · heatmap with date range filtering
 
 ---
 
