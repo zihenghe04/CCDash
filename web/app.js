@@ -1,6 +1,6 @@
 /* ==========================================================================
-   CCDASH — Application Logic
-   Open-source usage analytics dashboard for Claude Code CLI
+   CLAUDE CORE CONSOLE — Application Logic
+   Zinc-gray SaaS aesthetic. All features merged.
    ========================================================================== */
 
 const notyf = new Notyf({ duration:3000, position:{x:'right',y:'top'}, types:[{type:'success',background:'#10b981',icon:false},{type:'error',background:'#f87171',icon:false}] });
@@ -32,7 +32,16 @@ const I18N = {
     modelCount:'模型数', todayCalls:'今日', todayTools:'工具', avgDuration:'平均耗时', avgTtft:'平均首字',
     perPage:'条/页', ttft:'首字', duration:'耗时',
     loading:'加载中...',
-    navOverview:'概览', navAnalytics:'分析', navLive:'实时', navLogs:'日志'
+    navOverview:'概览', navAnalytics:'分析', navLive:'实时', navLogs:'日志',
+    toolUsage:'工具分布', toolUsageDesc:'所有会话中最常使用的工具',
+    codingRhythm:'编码节奏', codingRhythmDesc:'按时间段的活跃分布', workMode:'工作模式', workModeDesc:'探索 vs 构建 vs 执行', modelDNA:'模型 DNA', modelDNADesc:'按模型家族的 Token 分布', projection:'预估',
+    burnRate:'消耗速率', exportCSV:'导出CSV', exportJSON:'导出JSON',
+    monthly:'月度', projectCost:'项目成本',
+    weekCompare:'周环比', dayCompare:'日环比', thisWeek:'本周', lastWeek:'上周', today:'今日', yesterday:'昨日',
+    ctxUsage:'上下文%', tokens:'Token',
+    sessionDetail:'会话详情', duration:'耗时', cost:'成本', tools:'工具',
+    filesAccessed:'访问文件', noEvents:'无事件记录',
+    sessUser:'用户', sessAssistant:'助手'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -59,10 +68,19 @@ const I18N = {
     modelCount:'Models', todayCalls:'Today', todayTools:'Tools', avgDuration:'Avg Duration', avgTtft:'Avg TTFT',
     perPage:'per page', ttft:'TTFT', duration:'Duration',
     loading:'Loading...',
-    navOverview:'Overview', navAnalytics:'Analytics', navLive:'Live Stream', navLogs:'System Logs'
+    navOverview:'Overview', navAnalytics:'Analytics', navLive:'Live Stream', navLogs:'System Logs',
+    toolUsage:'Tool Distribution', toolUsageDesc:'Most used tools across all sessions',
+    codingRhythm:'Coding Rhythm', codingRhythmDesc:'Activity distribution by time of day', workMode:'Work Mode', workModeDesc:'Exploration vs Building vs Execution', modelDNA:'Model DNA', modelDNADesc:'Token distribution by model family', projection:'Projection',
+    burnRate:'Burn Rate', exportCSV:'Export CSV', exportJSON:'Export JSON',
+    monthly:'Monthly', projectCost:'Project Cost',
+    weekCompare:'Week over Week', dayCompare:'Day over Day', thisWeek:'This Week', lastWeek:'Last Week', today:'Today', yesterday:'Yesterday',
+    ctxUsage:'Ctx%', tokens:'Tokens',
+    sessionDetail:'Session Detail', duration:'Duration', cost:'Cost', tools:'Tools',
+    filesAccessed:'Files Accessed', noEvents:'No events found',
+    sessUser:'User', sessAssistant:'Assistant'
   }
 };
-let curLang = localStorage.getItem('ccdash_lang') || 'zh';
+let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
 
 function applyI18n() {
   const t = I18N[curLang] || I18N.zh;
@@ -75,14 +93,14 @@ function applyI18n() {
   if (si) si.placeholder = curLang === 'zh' ? '搜索会话...' : 'Search sessions...';
   // Update page title
   const titleMap = { overview:'navOverview', analytics:'navAnalytics', live:'navLive', logs:'navLogs' };
-  const curPage = localStorage.getItem('ccdash_page') || 'overview';
+  const curPage = localStorage.getItem('claude_dash_page') || 'overview';
   const pt = document.getElementById('pageTitle');
   if (pt && titleMap[curPage]) pt.textContent = t[titleMap[curPage]] || curPage;
 }
 
 function toggleLang() {
   curLang = curLang === 'zh' ? 'en' : 'zh';
-  localStorage.setItem('ccdash_lang', curLang);
+  localStorage.setItem('claude_dash_lang', curLang);
   applyI18n();
   renderCharts();
   loadLive();
@@ -91,7 +109,7 @@ function toggleLang() {
 
 /* ---- Theme ---- */
 function initTheme() {
-  const s = localStorage.getItem('ccdash_theme') || 'dark';
+  const s = localStorage.getItem('claude_dash_theme') || 'dark';
   document.body.dataset.theme = s;
   updateThemeIcon(s);
 }
@@ -106,12 +124,29 @@ function updateThemeIcon(t) {
 function toggleTheme() {
   const n = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
   document.body.dataset.theme = n;
-  localStorage.setItem('ccdash_theme', n);
+  localStorage.setItem('claude_dash_theme', n);
   updateThemeIcon(n);
   renderCharts();
   if (window._ringData) drawRing(...window._ringData);
 }
 initTheme();
+
+/* ---- Privacy Mode ---- */
+let privacyMode = localStorage.getItem('claude_dash_privacy') === 'true';
+function togglePrivacy() {
+  privacyMode = !privacyMode;
+  localStorage.setItem('claude_dash_privacy', privacyMode);
+  document.body.classList.toggle('privacy-mode', privacyMode);
+  const btn = document.getElementById('privacyBtn');
+  if (btn) btn.innerHTML = privacyMode ? '<i class="ph ph-eye-slash"></i>' : '<i class="ph ph-eye"></i>';
+  notyf.success(privacyMode ? (curLang==='zh'?'隐私模式已开启':'Privacy mode on') : (curLang==='zh'?'隐私模式已关闭':'Privacy mode off'));
+}
+// Apply on load
+if (privacyMode) {
+  document.body.classList.add('privacy-mode');
+  const btn = document.getElementById('privacyBtn');
+  if (btn) btn.innerHTML = '<i class="ph ph-eye-slash"></i>';
+}
 
 /* ---- Filter ---- */
 function toggleFilter() {
@@ -161,7 +196,7 @@ function mC(m) { return MC[m] || '#2dd4bf'; }
 function mS(m) { return m.replace('claude-','').replace(/-\d{8}$/,''); }
 
 /* ---- API helper ---- */
-async function api(p) { return (await fetch(p)).json(); }
+async function api(p) { try { return await (await fetch(p)).json(); } catch(e) { console.warn('API error:', p, e); return null; } }
 
 /* ---- CountUp ---- */
 const _cu = {};
@@ -208,7 +243,9 @@ function switchPage(pageId) {
   if (pageEl) pageEl.classList.add('active');
   const navEl = document.querySelector(`.nav-item[data-page="${pageId}"]`);
   if (navEl) navEl.classList.add('active');
-  localStorage.setItem('ccdash_page', pageId);
+  // Slide the nav indicator pill
+  moveNavSlider(navEl);
+  localStorage.setItem('claude_dash_page', pageId);
   // Update page title
   const t = I18N[curLang] || I18N.zh;
   const titleMap = { overview:'navOverview', analytics:'navAnalytics', live:'navLive', logs:'navLogs' };
@@ -217,9 +254,36 @@ function switchPage(pageId) {
   // Lazy load
   if (pageId === 'overview' && !chA) renderCharts();
   if (pageId === 'live') { loadLive(); }
-  if (pageId === 'analytics') { loadModels(); loadProjects(); }
+  if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); }
   if (pageId === 'logs') { loadLogs(); loadSess(); }
 }
+
+function moveNavSlider(activeEl) {
+  const slider = document.getElementById('navSlider');
+  if (!slider || !activeEl) return;
+  // Get all nav items and find index
+  const items = Array.from(document.querySelectorAll('#sidebarNav .nav-item'));
+  const idx = items.indexOf(activeEl);
+  if (idx < 0) return;
+  // Calculate offset: each item is ~42px (padding 10+10 + font ~20 + gap 2)
+  // Use actual measurements
+  const firstItem = items[0];
+  if (!firstItem) return;
+  const navPadding = 8; // var(--space-sm)
+  const gap = 2;
+  const itemH = firstItem.offsetHeight;
+  const offset = navPadding + idx * (itemH + gap);
+  slider.style.transform = `translateY(${offset}px)`;
+  slider.style.height = itemH + 'px';
+  slider.style.opacity = '1';
+}
+
+function initNavSlider() {
+  const activeNav = document.querySelector('.nav-item.active');
+  if (activeNav) moveNavSlider(activeNav);
+}
+setTimeout(initNavSlider, 300);
+window.addEventListener('resize', initNavSlider);
 
 /* ===== Data Loading ===== */
 let _cdI, curRange = '7d';
@@ -239,6 +303,7 @@ function updateGauge(pct) {
 
 async function loadStatus() {
   const d = await api('/api/status');
+  if (!d) return;
   document.getElementById('pName').textContent = d.profile_name || '—';
   updateGauge(d.utilization || 0);
   document.getElementById('tMsg').textContent = d.today_messages;
@@ -300,6 +365,7 @@ async function loadStatus() {
 
 async function loadOverview() {
   const d = await api('/api/overview');
+  if (!d) return;
   animateValue('cMsg', fmtRaw(d.total_messages));
   animateValue('cSes', fmtRaw(d.total_sessions));
   // Use fmt() for large token counts to avoid truncation
@@ -321,6 +387,40 @@ async function loadOverview() {
   if (avgDurEl) avgDurEl.textContent = d.avg_duration_ms ? (d.avg_duration_ms < 1000 ? d.avg_duration_ms + 'ms' : (d.avg_duration_ms / 1000).toFixed(1) + 's') : '—';
   const avgTtftEl = document.getElementById('avgTtftVal');
   if (avgTtftEl) avgTtftEl.textContent = d.avg_ttft_ms ? (d.avg_ttft_ms < 1000 ? d.avg_ttft_ms + 'ms' : (d.avg_ttft_ms / 1000).toFixed(1) + 's') : '—';
+  // Burn rate with severity classification
+  const brEl = document.getElementById('burnRate');
+  const brBadge = document.getElementById('burnBadge');
+  if (brEl) {
+    const br = d.burn_rate_tokens_per_min || 0;
+    brEl.textContent = br ? fmt(br) : '—';
+    if (brBadge) {
+      let sev, sevColor;
+      if (br >= 2000000) { sev = curLang==='zh'?'极高':'Extreme'; sevColor = 'var(--red)'; }
+      else if (br >= 500000) { sev = curLang==='zh'?'高':'High'; sevColor = 'var(--orange)'; }
+      else if (br >= 100000) { sev = curLang==='zh'?'中':'Moderate'; sevColor = 'var(--blue)'; }
+      else if (br >= 10000) { sev = curLang==='zh'?'低':'Low'; sevColor = 'var(--green)'; }
+      else { sev = curLang==='zh'?'空闲':'Idle'; sevColor = 'var(--text-2)'; }
+      brBadge.textContent = sev;
+      brBadge.style.color = sevColor;
+    }
+  }
+  // Cache efficiency grade
+  const cacheGrade = document.getElementById('cacheGrade');
+  if (cacheGrade) {
+    const hr = d.cache_hit_rate || 0;
+    let grade, gc;
+    if (hr >= 85) { grade = curLang==='zh'?'优秀':'Excellent'; gc = 'var(--green)'; }
+    else if (hr >= 60) { grade = curLang==='zh'?'良好':'Good'; gc = 'var(--blue)'; }
+    else if (hr >= 30) { grade = curLang==='zh'?'一般':'Fair'; gc = 'var(--orange)'; }
+    else { grade = curLang==='zh'?'较低':'Poor'; gc = 'var(--red)'; }
+    cacheGrade.textContent = grade;
+    cacheGrade.style.color = gc;
+  }
+  // Usage projection (estimated daily cost at current rate)
+  const projEl = document.getElementById('projCost');
+  if (projEl && d.burn_rate_cost_per_hour) {
+    projEl.textContent = '$' + (d.burn_rate_cost_per_hour * 24).toFixed(0) + '/day';
+  }
   // Cost is updated by loadModels() to ensure consistency with analytics page
   window._ringData = [d.total_input||0, d.total_cache_read||0, d.total_cache_create||0, d.cache_hit_rate||0];
   drawRing(...window._ringData);
@@ -379,36 +479,121 @@ function calcDayCost(byModel) {
 }
 
 let chA, chT;
+
+function aggregateMonthly(activity, tokens) {
+  const actMap = {}, tokMap = {};
+  activity.forEach(a => {
+    const m = a.date.slice(0,7); // YYYY-MM
+    if (!actMap[m]) actMap[m] = {date:m,messages:0,sessions:0,tools:0};
+    actMap[m].messages += a.messages; actMap[m].sessions += a.sessions; actMap[m].tools += (a.tools||0);
+  });
+  tokens.forEach(t => {
+    const m = t.date.slice(0,7);
+    if (!tokMap[m]) tokMap[m] = {date:m,byModel:{}};
+    for (const [model,v] of Object.entries(t.byModel||{})) {
+      if (!tokMap[m].byModel[model]) tokMap[m].byModel[model] = {input:0,output:0,cache_read:0,cache_create:0};
+      for (const k of ['input','output','cache_read','cache_create']) tokMap[m].byModel[model][k] += (v[k]||0);
+    }
+  });
+  const months = [...new Set([...Object.keys(actMap),...Object.keys(tokMap)])].sort();
+  return {
+    activity: months.map(m => actMap[m] || {date:m,messages:0,sessions:0,tools:0}),
+    tokens: months.map(m => tokMap[m] || {date:m,byModel:{}})
+  };
+}
+
 async function loadCharts() {
-  const days = parseInt(curRange) || 30;
+  const is24h = curRange === '24h';
+  const isMonthly = curRange === 'monthly';
+
+  // 24H mode: use hourly-trend API
+  if (is24h) {
+    const h = await api('/api/hourly-trend');
+    if (!h) return;
+    const dates = h.hours.map(x => x.hour);
+    const msgs = h.hours.map(x => x.messages);
+    const toks = h.hours.map(x => x.tokens);
+    const costs = h.hours.map(x => x.cost);
+    const dk = document.body.dataset.theme === 'dark';
+    const fg = dk ? '#71717a' : '#a1a1aa';
+
+    if (chA) chA.destroy();
+    chA = new ApexCharts(document.getElementById('chartAct'), {
+      chart:{type:'bar',height:290,background:'transparent',foreColor:fg,toolbar:{show:false},fontFamily:'Inter'},
+      series:[
+        {name:curLang==='zh'?'消息':'Messages',data:msgs},
+        {name:curLang==='zh'?'Token':'Tokens',data:toks,type:'line'},
+        {name:curLang==='zh'?'成本($)':'Cost($)',data:costs,type:'line'}
+      ],
+      colors:['#4ade80','#22d3ee','#fbbf24'],
+      xaxis:{categories:dates,axisBorder:{show:false},axisTicks:{show:false},labels:{style:{fontSize:'9px',fontFamily:'JetBrains Mono'}}},
+      yaxis:[
+        {labels:{formatter:v=>fmt(v),style:{fontSize:'9px'}}},
+        {opposite:true,labels:{formatter:v=>fmt(v),style:{fontSize:'9px'}},show:false},
+        {opposite:true,labels:{formatter:v=>'$'+v.toFixed(1),style:{fontSize:'9px'}},show:false}
+      ],
+      plotOptions:{bar:{borderRadius:4,columnWidth:'60%'}},
+      grid:{show:false},dataLabels:{enabled:false},stroke:{width:[0,2.5,2.5],curve:'smooth'},
+      legend:{position:'top',horizontalAlign:'left',fontSize:'10px',fontFamily:'Inter',labels:{colors:fg}},
+      tooltip:{theme:dk?'dark':'light'},theme:{mode:dk?'dark':'light'}
+    });
+    chA.render();
+    // Also render weekly comparison if available
+    if (typeof renderWeeklyComparison === 'function') {
+      const wc = document.getElementById('weeklyCompare');
+      if (wc) wc.style.display = 'none';
+    }
+    return;
+  }
+
+  const days = isMonthly ? 365 : (parseInt(curRange) || 30);
   const d = await api('/api/daily?days=' + days);
-  const dates = d.activity.map(a => a.date.slice(5));
+  if (!d) return;
+  let activity = d.activity, tokens = d.tokens;
+  if (isMonthly) {
+    const agg = aggregateMonthly(activity, tokens);
+    activity = agg.activity; tokens = agg.tokens;
+  }
+  const dates = activity.map(a => isMonthly ? a.date : a.date.slice(5));
   const dk = document.body.dataset.theme === 'dark';
   const fg = dk ? '#71717a' : '#a1a1aa';
 
   /* --- Cost data from token byModel --- */
-  const costData = d.tokens.map(t => calcDayCost(t.byModel));
+  const costData = tokens.map(t => calcDayCost(t.byModel));
+
+  /* --- Daily total tokens --- */
+  const dailyTokens = tokens.map(t => {
+    let total = 0;
+    for (const v of Object.values(t.byModel || {})) {
+      total += (v.input||0) + (v.output||0) + (v.cache_read||0) + (v.cache_create||0);
+    }
+    return total;
+  });
 
   if (chA) chA.destroy();
+  const tokLabel = curLang==='zh'?'Token':'Tokens';
   chA = new ApexCharts(document.getElementById('chartAct'), {
-    chart: { type:'area', height:290, background:'transparent', foreColor:fg, toolbar:{show:false}, animations:{enabled:true,easing:'easeinout',speed:900} },
+    chart: { type:'line', height:290, background:'transparent', foreColor:fg, toolbar:{show:false}, animations:{enabled:true,easing:'easeinout',speed:900} },
     series: [
-      { name:curLang==='zh'?'消息':'Messages', data:d.activity.map(a=>a.messages) },
-      { name:curLang==='zh'?'会话':'Sessions', data:d.activity.map(a=>a.sessions) },
-      { name:curLang==='zh'?'工具':'Tools', data:d.activity.map(a=>a.tools) },
-      { name:curLang==='zh'?'成本($)':'Cost($)', data:costData }
+      { name:curLang==='zh'?'消息':'Messages', type:'area', data:activity.map(a=>a.messages) },
+      { name:curLang==='zh'?'会话':'Sessions', type:'area', data:activity.map(a=>a.sessions) },
+      { name:curLang==='zh'?'工具':'Tools', type:'area', data:activity.map(a=>a.tools) },
+      { name:curLang==='zh'?'成本($)':'Cost($)', type:'area', data:costData },
+      { name:tokLabel, type:'column', data:dailyTokens }
     ],
-    colors: ['#4ade80','#60a5fa','#c084fc','#fbbf24'],
+    colors: ['#4ade80','#60a5fa','#c084fc','#fbbf24','#22d3ee'],
     xaxis: { categories:dates, labels:{style:{fontSize:'9px',fontFamily:'JetBrains Mono',colors:fg}}, axisBorder:{show:false}, axisTicks:{show:false} },
     yaxis: [
       { seriesName:curLang==='zh'?'消息':'Messages', labels:{style:{fontSize:'9px',fontFamily:'JetBrains Mono'}, formatter:v=>fmt(v)}, axisBorder:{show:false} },
       { seriesName:curLang==='zh'?'会话':'Sessions', show:false },
       { seriesName:curLang==='zh'?'工具':'Tools', show:false },
-      { seriesName:curLang==='zh'?'成本($)':'Cost($)', opposite:true, labels:{style:{fontSize:'9px',fontFamily:'JetBrains Mono',color:'#fbbf24'}, formatter:v=>'$'+v.toFixed(1)}, axisBorder:{show:false} }
+      { seriesName:curLang==='zh'?'成本($)':'Cost($)', opposite:true, labels:{style:{fontSize:'9px',fontFamily:'JetBrains Mono',color:'#fbbf24'}, formatter:v=>'$'+v.toFixed(1)}, axisBorder:{show:false} },
+      { seriesName:tokLabel, opposite:true, show:false }
     ],
     grid: { show:false },
-    stroke: { curve:'smooth', width:[2.5,2.5,2.5,2.5] },
-    fill: { type:'gradient', gradient:{shadeIntensity:1,opacityFrom:0.25,opacityTo:0.02,stops:[0,90,100]} },
+    stroke: { curve:'smooth', width:[2.5,2.5,2.5,2.5,0] },
+    fill: { type:['gradient','gradient','gradient','gradient','solid'], gradient:{shadeIntensity:1,opacityFrom:0.25,opacityTo:0.02,stops:[0,90,100]}, opacity:[1,1,1,1,0.25] },
+    plotOptions: { bar:{ borderRadius:2, columnWidth:'40%' } },
     dataLabels: { enabled:false },
     legend: { position:'top', horizontalAlign:'left', fontSize:'10px', fontFamily:'Inter', labels:{colors:fg}, markers:{shape:'circle',size:4} },
     tooltip: { theme:dk?'dark':'light', style:{fontFamily:'JetBrains Mono',fontSize:'11px'}, y:{formatter:(v,{seriesIndex})=>seriesIndex===3?'$'+v.toFixed(2):fmt(v)} },
@@ -416,13 +601,18 @@ async function loadCharts() {
   });
   chA.render();
 
+  // Weekly comparison
+  // Store both comparisons for toggle
+  window._compareData = { weekly: d.weekly_comparison, daily: d.daily_comparison };
+  renderComparison();
+
   const am = new Set();
-  d.tokens.forEach(t => Object.keys(t.byModel || {}).forEach(m => am.add(m)));
+  tokens.forEach(t => Object.keys(t.byModel || {}).forEach(m => am.add(m)));
 
   if (chT) chT.destroy();
   chT = new ApexCharts(document.getElementById('chartTok'), {
     chart: { type:'bar', height:290, stacked:true, background:'transparent', foreColor:fg, toolbar:{show:false}, animations:{enabled:true,speed:800} },
-    series: [...am].map(m => ({ name:mS(m), data:d.tokens.map(t => { const v=(t.byModel||{})[m]; return v ? v.input+v.output+v.cache_read+v.cache_create : 0; }) })),
+    series: [...am].map(m => ({ name:mS(m), data:tokens.map(t => { const v=(t.byModel||{})[m]; return v ? v.input+v.output+v.cache_read+v.cache_create : 0; }) })),
     colors: [...am].map(m => mC(m)),
     xaxis: { categories:dates, labels:{style:{fontSize:'9px',fontFamily:'JetBrains Mono'}}, axisBorder:{show:false}, axisTicks:{show:false} },
     yaxis: { labels:{style:{fontSize:'9px',fontFamily:'JetBrains Mono'}, formatter:v=>fmt(v)} },
@@ -440,6 +630,7 @@ let chHm;
 async function loadHeatmap() {
   const days = parseInt(curRange) || 30;
   const d = await api('/api/hourly?days=' + days);
+  if (!d) return;
   const hm = d.heatmap;
   const dk = document.body.dataset.theme === 'dark';
   const fg = dk ? '#71717a' : '#a1a1aa';
@@ -474,21 +665,29 @@ async function renderCharts() {
 function swTab(t) {
   const tm = { act:'dailyTrend', tok:'tokenDist', hm:'heatmap' };
   document.querySelectorAll('.tabs .tab').forEach(el => el.classList.toggle('on', el.dataset.i === tm[t]));
-  document.getElementById('pAct').style.display = t === 'act' ? '' : 'none';
-  document.getElementById('pTok').style.display = t === 'tok' ? '' : 'none';
-  document.getElementById('pHm').style.display = t === 'hm' ? '' : 'none';
+  const panels = { act:'pAct', tok:'pTok', hm:'pHm' };
+  Object.entries(panels).forEach(([k,id]) => {
+    const el = document.getElementById(id);
+    if (k === t) { el.style.display = ''; el.style.animation = 'none'; el.offsetHeight; el.style.animation = 'chartIn .4s ease'; }
+    else { el.style.display = 'none'; }
+  });
   if (t === 'hm') loadHeatmap();
 }
 
 function setRange(r) {
   curRange = r;
-  document.querySelectorAll('.pill').forEach(el => el.classList.toggle('on', el.textContent === r.toUpperCase()));
+  document.querySelectorAll('.pill').forEach(el => {
+    const txt = el.textContent.trim();
+    if (r === 'monthly') el.classList.toggle('on', el.hasAttribute('data-i') && el.dataset.i === 'monthly');
+    else el.classList.toggle('on', txt === r.toUpperCase());
+  });
   loadCharts();
   if (document.getElementById('pHm').style.display !== 'none') loadHeatmap();
 }
 
 async function loadModels() {
   const d = await api('/api/models');
+  if (!d) return;
   const ms = Object.entries(d.models).sort((a,b) => {
     const ta = a[1].input+a[1].output+a[1].cache_read+a[1].cache_create;
     const tb = b[1].input+b[1].output+b[1].cache_read+b[1].cache_create;
@@ -501,7 +700,9 @@ async function loadModels() {
     const ai = v.input+v.cache_read+v.cache_create;
     const hr = ai > 0 ? (v.cache_read/ai*100).toFixed(0) : 0;
     const cost = v.cost_usd != null ? '$'+v.cost_usd.toFixed(2) : '—';
-    return `<tr><td><span class="mdot" style="background:${mC(m)}"></span>${mS(m)}</td><td class="mono"><span class="tk-in">↓</span>${fmt(v.input)}</td><td class="mono"><span class="tk-out">↑</span>${fmt(v.output)}</td><td class="mono"><span class="tk-cr">⟲</span>${fmt(v.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span>${fmt(v.cache_create)}</td><td>${v.calls}</td><td>${hr}%</td><td style="color:var(--green);font-weight:600">${cost}</td></tr>`;
+    const ctxPct = v.avg_context_usage_pct || 0;
+    const ctxColor = ctxPct > 80 ? 'var(--red)' : ctxPct > 50 ? 'var(--orange)' : 'var(--green)';
+    return `<tr><td><span class="mdot" style="background:${mC(m)}"></span>${mS(m)}</td><td class="mono"><span class="tk-in">↓</span>${fmt(v.input)}</td><td class="mono"><span class="tk-out">↑</span>${fmt(v.output)}</td><td class="mono"><span class="tk-cr">⟲</span>${fmt(v.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span>${fmt(v.cache_create)}</td><td>${v.calls}</td><td>${hr}%</td><td><span class="ctx-bar-wrap"><span class="ctx-bar-fill" style="width:${Math.min(ctxPct,100)}%;background:${ctxColor}"></span></span><span class="ctx-pct" style="color:${ctxColor}">${ctxPct}%</span></td><td style="color:var(--green);font-weight:600">${cost}</td></tr>`;
   }).join('');
   // Update overview cost badge from models total (single source of truth)
   const totalModelCost = ms.reduce((s,[,v]) => s + (v.cost_usd||0), 0);
@@ -513,6 +714,7 @@ async function loadModels() {
 
 async function loadProjects() {
   const d = await api('/api/projects');
+  if (!d) return;
   const tot = d.projects.reduce((s,p) => s+p.tokens_total, 0);
   document.getElementById('tbProj').innerHTML = d.projects.map(p => {
     const pc = tot > 0 ? (p.tokens_total/tot*100).toFixed(1) : 0;
@@ -526,7 +728,8 @@ async function loadProjects() {
       sb = `<span style="font:600 8px var(--font);padding:1px 6px;border-radius:4px;background:var(--blue-bg);color:var(--blue);margin-left:4px">${lbl}</span>`;
       dn = dn.replace(/\s*\(cloud\)/, '');
     }
-    return `<tr><td title="${p.dir_name||''}">${dn}${sb}</td><td>${fmt(p.messages)}</td><td>${p.sessions}</td><td class="mono">${fmt(p.tokens_total)}</td><td>${pc}%</td></tr>`;
+    const pcost = p.cost_usd != null ? '$'+p.cost_usd.toFixed(2) : '—';
+    return `<tr><td title="${p.dir_name||''}">${dn}${sb}</td><td>${fmt(p.messages)}</td><td>${p.sessions}</td><td class="mono">${fmt(p.tokens_total)}</td><td>${pc}%</td><td class="mono" style="color:var(--green)">${pcost}</td></tr>`;
   }).join('');
   const sel = document.getElementById('filterProject');
   if (sel.options.length <= 1) d.projects.forEach(p => { const o = document.createElement('option'); o.value = p.name; o.textContent = p.name; sel.appendChild(o); });
@@ -539,15 +742,17 @@ async function loadSess() {
   if (f) url += `&project=${encodeURIComponent(f)}`;
   if (q) url += `&q=${encodeURIComponent(q)}`;
   const d = await api(url);
+  if (!d) return;
   const sel = document.getElementById('sFilt');
   if (sel.options.length <= 1 && d.projects) d.projects.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p.split('/').pop() || '~'; sel.appendChild(o); });
   document.getElementById('tbSess').innerHTML = d.sessions.map(s =>
-    `<tr><td>${fmtT(s.timestamp)}</td><td title="${s.project}">${s.projectShort}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
+    `<tr onclick="showSessionDetail('${s.sessionId}')" title="${curLang==='zh'?'点击查看详情':'Click for details'}"><td>${fmtT(s.timestamp)}</td><td title="${s.project}">${s.projectShort}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
   ).join('');
 }
 
 async function loadLive() {
   const d = await api('/api/live');
+  if (!d) return;
   const badge = document.getElementById('liveBadge');
   if (badge) badge.textContent = d.calls.length;
   document.getElementById('liveN').textContent = d.calls.length + (curLang==='zh' ? ' 条' : ' calls');
@@ -607,6 +812,7 @@ async function loadLogs() {
   if (model) url += `&model=${encodeURIComponent(model)}`;
   if (project) url += `&project=${encodeURIComponent(project)}`;
   const d = await api(url);
+  if (!d) return;
   const tp = Math.ceil(d.total / logLimit) || 1;
   document.getElementById('logTotal').textContent = d.total + (curLang==='zh' ? ' 条' : ' records');
   document.getElementById('tbLogs').innerHTML = d.logs.map(c => {
@@ -661,13 +867,291 @@ function toggleAutoRefresh() {
 function startAutoRefresh() { if (autoRefreshTimer) clearInterval(autoRefreshTimer); autoRefreshTimer = setInterval(() => { loadLogs(); loadLive(); }, 15000); }
 function stopAutoRefresh() { if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; } }
 
+/* ---- Tool Distribution ---- */
+const TOOL_COLORS = {
+  'Read':'#60a5fa','Edit':'#fbbf24','Bash':'#4ade80','Write':'#c084fc',
+  'Grep':'#f87171','Glob':'#22d3ee','Agent':'#fb923c'
+};
+let chTools;
+
+/* ---- Coding Rhythm + Work Mode + Model DNA ---- */
+async function loadRhythm() {
+  const d = await api('/api/rhythm');
+  if (!d) return;
+
+  // Coding Rhythm — horizontal bars
+  const el = document.getElementById('rhythmBars');
+  if (el && d.rhythm) {
+    const labels = {morning: curLang==='zh'?'🌅 上午 6-12':'🌅 Morning', afternoon: curLang==='zh'?'☀️ 下午 12-18':'☀️ Afternoon', evening: curLang==='zh'?'🌆 晚上 18-24':'🌆 Evening', night: curLang==='zh'?'🌙 夜间 0-6':'🌙 Night'};
+    const colors = {morning:'#fbbf24', afternoon:'#fb923c', evening:'#c084fc', night:'#60a5fa'};
+    el.innerHTML = Object.entries(d.rhythm.periods).map(([k,pct]) =>
+      `<div style="display:flex;align-items:center;gap:10px;margin:8px 0">
+        <span style="font-size:12px;width:110px;flex-shrink:0">${labels[k]||k}</span>
+        <div style="flex:1;height:20px;background:var(--bg-4);border-radius:10px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${colors[k]};border-radius:10px;transition:width .8s ease"></div>
+        </div>
+        <span class="mono" style="font-size:12px;width:35px;text-align:right">${pct}%</span>
+      </div>`
+    ).join('') + `<div style="font-size:11px;color:var(--text-2);margin-top:8px">${curLang==='zh'?'高峰时段':'Peak hour'}: <b style="color:var(--text-0)">${d.rhythm.peak_hour}:00</b></div>`;
+  }
+
+  // Work Mode — stacked bar
+  const wm = document.getElementById('workModeChart');
+  if (wm && d.work_mode) {
+    const w = d.work_mode;
+    const modeLabels = {exploration: curLang==='zh'?'探索 (Read/Grep/Glob)':'Exploration', building: curLang==='zh'?'构建 (Write/Edit)':'Building', execution: curLang==='zh'?'执行 (Bash/Agent)':'Execution'};
+    const modeColors = {exploration:'#60a5fa', building:'#fbbf24', execution:'#4ade80'};
+    const primary = curLang==='zh' ? (w.primary==='exploration'?'探索者':w.primary==='building'?'构建者':'执行者') : (w.primary.charAt(0).toUpperCase()+w.primary.slice(1)+' Focus');
+    wm.innerHTML = `<div style="font:700 18px var(--mono);color:var(--text-0);margin-bottom:12px">${primary}</div>
+      <div style="display:flex;height:24px;border-radius:12px;overflow:hidden;margin-bottom:14px">
+        ${w.exploration?`<div style="width:${w.exploration}%;background:${modeColors.exploration}" title="Exploration ${w.exploration}%"></div>`:''}
+        ${w.building?`<div style="width:${w.building}%;background:${modeColors.building}" title="Building ${w.building}%"></div>`:''}
+        ${w.execution?`<div style="width:${w.execution}%;background:${modeColors.execution}" title="Execution ${w.execution}%"></div>`:''}
+      </div>
+      ${Object.entries(modeLabels).map(([k,label]) => `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${modeColors[k]}"></span>${label} <span class="mono" style="margin-left:auto">${w[k]}%</span> <span style="color:var(--text-2)">(${fmt(w.raw[k])})</span></div>`).join('')}`;
+  }
+
+  // Model DNA — horizontal stacked bar
+  const dna = document.getElementById('modelDNAChart');
+  if (dna && d.model_dna) {
+    const total = Object.values(d.model_dna).reduce((s,v)=>s+v,0) || 1;
+    const familyColors = {Opus:'#c084fc', Sonnet:'#60a5fa', Haiku:'#4ade80', Other:'#6b7280'};
+    dna.innerHTML = `<div style="display:flex;height:28px;border-radius:14px;overflow:hidden;margin-bottom:14px">
+        ${Object.entries(d.model_dna).map(([k,v]) => {const pct = (v/total*100).toFixed(1); return v > 0 ? `<div style="width:${pct}%;background:${familyColors[k]||'#6b7280'}" title="${k} ${pct}%"></div>` : '';}).join('')}
+      </div>
+      ${Object.entries(d.model_dna).map(([k,v]) => {const pct = (v/total*100).toFixed(1); return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${familyColors[k]||'#6b7280'}"></span><span style="flex:1">${k}</span><span class="mono">${fmt(v)}</span><span style="color:var(--text-2);width:45px;text-align:right">${pct}%</span></div>`;}).join('')}`;
+  }
+}
+async function loadTools() {
+  try {
+    const d = await api('/api/tools');
+  if (!d) return;
+    const entries = Object.entries(d.tools || {}).sort((a,b) => b[1].calls - a[1].calls);
+    if (!entries.length) return;
+    const labels = entries.map(([n]) => n);
+    const series = entries.map(([,v]) => v.calls);
+    const colors = entries.map(([n]) => TOOL_COLORS[n] || '#9ca3af');
+    const dk = document.body.dataset.theme === 'dark';
+    if (chTools) chTools.destroy();
+    chTools = new ApexCharts(document.getElementById('chartTools'), {
+      chart:{type:'donut',height:190,background:'transparent',foreColor:dk?'#a1a1aa':'#71717a'},
+      series, labels, colors,
+      plotOptions:{pie:{donut:{size:'60%',labels:{show:true,name:{show:false},value:{show:true,fontSize:'15px',fontWeight:700,fontFamily:'JetBrains Mono',color:dk?'#e2e8f0':'#09090b',formatter:()=>fmt(d.total_calls)},total:{show:true,label:'Total',formatter:()=>fmt(d.total_calls)}}}}},
+      dataLabels:{enabled:false},legend:{show:false},stroke:{width:0},
+      theme:apexTheme(),
+      tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>fmt(v)+' calls'}}
+    });
+    chTools.render();
+    const listEl = document.getElementById('toolsList');
+    if (listEl) {
+      listEl.innerHTML = entries.slice(0,8).map(([name,v]) => {
+        const c = TOOL_COLORS[name] || '#9ca3af';
+        return `<div style="display:flex;align-items:center;gap:6px;margin:3px 0"><span style="width:8px;height:8px;border-radius:50%;background:${c};flex-shrink:0"></span><span style="font-size:11px;flex:1">${name}</span><span class="mono" style="font-size:10px;color:var(--fg-2)">${fmt(v.calls)}</span><span style="font-size:9px;color:var(--fg-3)">${v.sessions}s</span></div>`;
+      }).join('');
+    }
+  } catch(e) { console.warn('loadTools failed:', e); }
+}
+
+/* ---- Export ---- */
+function exportData(format) {
+  let url = `/api/export?format=${format}`;
+  const start = document.getElementById('filterStart').value;
+  const end = document.getElementById('filterEnd').value;
+  const model = document.getElementById('filterModel').value;
+  const project = document.getElementById('filterProject').value;
+  if (start) url += `&start=${encodeURIComponent(new Date(start).toISOString())}`;
+  if (end) url += `&end=${encodeURIComponent(new Date(end).toISOString())}`;
+  if (model) url += `&model=${encodeURIComponent(model)}`;
+  if (project) url += `&project=${encodeURIComponent(project)}`;
+  window.open(url, '_blank');
+}
+
+/* ---- Session Detail Modal ---- */
+async function showSessionDetail(sessionId) {
+  if (!sessionId) return;
+  const modal = document.getElementById('sessionModal');
+  const content = document.getElementById('sessionModalContent');
+  modal.style.display = 'flex';
+  const t = I18N[curLang] || I18N.zh;
+  content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-2)">${t.loading||'Loading...'}</div>`;
+
+  const d = await api('/api/session-detail?id=' + encodeURIComponent(sessionId));
+  if (!d || d.error) {
+    content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--red)">${d?.error || 'Error'}</div>`;
+    return;
+  }
+
+  const s = d.stats || {};
+  const dur = s.duration_ms ? (s.duration_ms < 60000 ? (s.duration_ms/1000).toFixed(1)+'s' : (s.duration_ms/60000).toFixed(1)+'m') : '—';
+  const costStr = s.total_cost != null ? '$'+s.total_cost.toFixed(2) : '—';
+  const modelsStr = (s.models||[]).map(m => mS(m)).join(', ') || '—';
+
+  let toolsBadges = '';
+  if (s.tools_summary) {
+    toolsBadges = Object.entries(s.tools_summary)
+      .sort((a,b) => b[1]-a[1])
+      .map(([name, count]) => `<span class="timeline-tool">${name} (${count})</span>`)
+      .join('');
+  }
+
+  let filesHtml = '';
+  if (s.files_touched && Object.keys(s.files_touched).length > 0) {
+    const filesEntries = Object.entries(s.files_touched).map(([path, ops]) => {
+      const short = path.split('/').slice(-2).join('/');
+      return `<div title="${path}"><span style="color:var(--blue)">R:${ops.read}</span> <span style="color:var(--orange)">E:${ops.edit}</span> ${short}</div>`;
+    }).join('');
+    filesHtml = `<details class="timeline-files"><summary>${t.filesAccessed||'Files Accessed'} (${Object.keys(s.files_touched).length})</summary><div class="timeline-files-list">${filesEntries}</div></details>`;
+  }
+
+  let statsHtml = `<div class="modal-stats">
+    <div class="modal-stat"><div class="modal-stat-val">${s.messages||0}</div><div class="modal-stat-label">${t.msgs||'Messages'}</div></div>
+    <div class="modal-stat"><div class="modal-stat-val">${dur}</div><div class="modal-stat-label">${t.duration||'Duration'}</div></div>
+    <div class="modal-stat"><div class="modal-stat-val" style="color:var(--green)">${costStr}</div><div class="modal-stat-label">${t.cost||'Cost'}</div></div>
+    <div class="modal-stat"><div class="modal-stat-val">${fmt(s.total_input||0)}</div><div class="modal-stat-label"><span class="tk-in">↓</span> Input</div></div>
+    <div class="modal-stat"><div class="modal-stat-val">${fmt(s.total_output||0)}</div><div class="modal-stat-label"><span class="tk-out">↑</span> Output</div></div>
+    <div class="modal-stat"><div class="modal-stat-val">${modelsStr}</div><div class="modal-stat-label">${t.model||'Model'}</div></div>
+  </div>`;
+
+  if (toolsBadges) {
+    statsHtml += `<div style="margin-bottom:12px"><span style="font:600 10px var(--font);color:var(--text-2);margin-right:8px">${t.tools||'Tools'}:</span>${toolsBadges}</div>`;
+  }
+  statsHtml += filesHtml;
+
+  let eventsHtml = '';
+  if (!d.events || d.events.length === 0) {
+    eventsHtml = `<div style="text-align:center;padding:20px;color:var(--text-2)">${t.noEvents||'No events found'}</div>`;
+  } else {
+    eventsHtml = d.events.map(ev => {
+      const timeStr = ev.timestamp ? fmtISO(ev.timestamp) : '';
+      if (ev.type === 'user') {
+        return `<div class="timeline-event user">
+          <div class="timeline-event-header">
+            <span class="timeline-event-type" style="color:var(--blue)">${t.sessUser||'User'}</span>
+            <span class="timeline-event-time">${timeStr}</span>
+          </div>
+          <div class="timeline-event-content">${escHtml(ev.content||'')}</div>
+        </div>`;
+      } else {
+        const metaParts = [];
+        if (ev.model) metaParts.push(mS(ev.model));
+        if (ev.input_tokens) metaParts.push('↓'+fmt(ev.input_tokens));
+        if (ev.output_tokens) metaParts.push('↑'+fmt(ev.output_tokens));
+        if (ev.cost_usd) metaParts.push('$'+ev.cost_usd.toFixed(4));
+        const toolsLine = (ev.tools_used||[]).length ? `<div class="timeline-tools">${ev.tools_used.map(tn => `<span class="timeline-tool">${tn}</span>`).join('')}</div>` : '';
+        return `<div class="timeline-event assistant">
+          <div class="timeline-event-header">
+            <span class="timeline-event-type" style="color:var(--green)">${t.sessAssistant||'Assistant'}</span>
+            <span class="timeline-event-time">${timeStr}</span>
+            <span class="timeline-event-meta">${metaParts.join(' · ')}</span>
+          </div>
+          <div class="timeline-event-content">${escHtml(ev.content||'')}</div>
+          ${toolsLine}
+        </div>`;
+      }
+    }).join('');
+  }
+
+  const actionBar = `<div class="modal-actions">
+    <button class="btn" onclick="navigator.clipboard.writeText('${sessionId}');notyf.success(curLang==='zh'?'Session ID 已复制':'Session ID copied')"><i class="ph ph-copy"></i> ID</button>
+    <button class="btn" onclick="navigator.clipboard.writeText('claude --resume ${sessionId}');notyf.success(curLang==='zh'?'Resume 命令已复制':'Resume command copied')"><i class="ph ph-terminal-window"></i> Resume</button>
+    <button class="btn" onclick="document.querySelector('.modal').scrollTo({top:document.querySelector('.modal').scrollHeight,behavior:'smooth'})"><i class="ph ph-arrow-down"></i> ${curLang==='zh'?'底部':'Bottom'}</button>
+  </div>`;
+  const fab = `<div class="modal-fab">
+    <button class="btn" onclick="document.querySelector('.modal').scrollTo({top:0,behavior:'smooth'})" title="Top"><i class="ph ph-arrow-up"></i></button>
+    <button class="btn" onclick="document.querySelector('.modal').scrollTo({top:document.querySelector('.modal').scrollHeight,behavior:'smooth'})" title="Bottom"><i class="ph ph-arrow-down"></i></button>
+  </div>`;
+  content.innerHTML = `<h3 style="font:700 18px var(--font);color:var(--text-0);margin:0 0 16px 0">${t.sessionDetail||'Session Detail'}</h3>${actionBar}${statsHtml}<div style="margin-top:16px">${eventsHtml}</div>${fab}`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function closeSessionModal(e) {
+  if (e && e.target && e.target !== document.getElementById('sessionModal')) return;
+  document.getElementById('sessionModal').style.display = 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('sessionModal');
+    if (modal && modal.style.display !== 'none') {
+      modal.style.display = 'none';
+    }
+  }
+});
+
+/* ---- Weekly Comparison ---- */
+let _compareMode = 'daily'; // 'daily' or 'weekly'
+function toggleCompareMode() {
+  _compareMode = _compareMode === 'daily' ? 'weekly' : 'daily';
+  // Trigger flip animation
+  const flipEl = document.getElementById('compareFlip');
+  const toggleEl = document.getElementById('compareToggle');
+  if (flipEl) {
+    flipEl.classList.add('flipped');
+    if (toggleEl) toggleEl.classList.toggle('flipped', _compareMode === 'weekly');
+    setTimeout(() => {
+      renderComparison();
+      flipEl.classList.remove('flipped');
+    }, 300);
+  } else {
+    renderComparison();
+  }
+}
+function renderComparison() {
+  const wrap = document.getElementById('weeklyCompare');
+  const el = document.getElementById('weekCompareContent');
+  const titleEl = document.getElementById('compareTitle');
+  const cd = window._compareData;
+  if (!wrap || !el || !cd) return;
+
+  const t = I18N[curLang] || I18N.zh;
+  const isDaily = _compareMode === 'daily';
+  const data = isDaily ? cd.daily : cd.weekly;
+  if (!data) { wrap.style.display = 'none'; return; }
+
+  const cur = isDaily ? (data.today || {}) : (data.this_week || {});
+  const prev = isDaily ? (data.yesterday || {}) : (data.last_week || {});
+  const cp = data.change_pct || {};
+
+  if (cur.messages === 0 && prev.messages === 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+
+  // Update title
+  if (titleEl) titleEl.textContent = isDaily ? (curLang==='zh'?'日环比':'Day over Day') : (curLang==='zh'?'周环比':'Week over Week');
+
+  const prevLabel = isDaily ? (curLang==='zh'?'昨日':'Yesterday') : (curLang==='zh'?'上周':'Last Week');
+  const curLabel = isDaily ? (curLang==='zh'?'今日':'Today') : (curLang==='zh'?'本周':'This Week');
+
+  const metrics = [
+    { label:t.msgs||'Messages', val:cur.messages||0, prev:prev.messages||0, pct:cp.messages||0, fmtFn:v=>fmt(v) },
+    { label:t.tokens||'Tokens', val:cur.tokens||0, prev:prev.tokens||0, pct:cp.tokens||0, fmtFn:v=>fmt(v) },
+    { label:t.cost||'Cost', val:cur.cost||0, prev:prev.cost||0, pct:cp.cost||0, fmtFn:v=>'$'+v.toFixed(2) },
+    { label:t.sessions_l||'Sessions', val:cur.sessions||0, prev:prev.sessions||0, pct:cp.sessions||0, fmtFn:v=>fmt(v) },
+  ];
+
+  el.innerHTML = `<div class="week-compare-row">${metrics.map(m => {
+    const dir = m.pct > 0 ? 'up' : m.pct < 0 ? 'down' : 'flat';
+    const arrow = m.pct > 0 ? '↑' : m.pct < 0 ? '↓' : '→';
+    return `<div class="week-compare-item">
+      <div class="week-compare-label">${m.label}</div>
+      <div class="week-compare-vals">
+        <span class="week-compare-current">${m.fmtFn(m.val)}</span>
+        <span class="week-compare-change ${dir}">${arrow} ${Math.abs(m.pct).toFixed(0)}%</span>
+      </div>
+      <div class="week-compare-prev">${prevLabel}: ${m.fmtFn(m.prev)}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
 /* ===== Init ===== */
 async function init() {
   try {
     // Load everything in parallel — don't block on slow remote calls
     await Promise.all([
       loadStatus(), loadOverview(), loadCharts(), loadModels(),
-      loadProjects(), loadSess(), loadLive(), loadLogs()
+      loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools()
     ]);
     notyf.success(curLang==='zh' ? 'Dashboard 加载完成' : 'Dashboard loaded');
   } catch(e) {
@@ -681,7 +1165,7 @@ async function init() {
   setInterval(loadStatus, 30000);
   startAutoRefresh();
   applyI18n();
-  const savedPage = localStorage.getItem('ccdash_page') || 'overview';
+  const savedPage = localStorage.getItem('claude_dash_page') || 'overview';
   switchPage(savedPage);
 }
 
@@ -689,7 +1173,7 @@ async function refreshAll() {
   document.getElementById('lastUp').textContent = curLang==='zh' ? '刷新中...' : 'Refreshing...';
   try {
     await api('/api/overview?refresh=1');
-    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs()]);
+    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools()]);
     notyf.success(curLang==='zh' ? '已更新' : 'Updated');
   } catch { notyf.error(curLang==='zh' ? '刷新失败' : 'Refresh failed'); }
   document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});

@@ -10,13 +10,14 @@
 <script src="https://cdn.jsdelivr.net/npm/countup.js@2.8.0/dist/countUp.umd.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
 <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body data-theme="dark">
 
 <!-- Loading overlay -->
 <div class="ld-ov" id="ldOv">
-  <div class="ld-logo">CC</div>
+  <img src="logo.png" class="ld-logo-img" alt="CCDash" width="64" height="64">
+  <div class="ld-brand">CCDash</div>
   <div class="ld-txt" id="ldTxt" data-i="loading">Loading...</div>
   <div class="ld-bar-wrap"><div class="ld-bar-fill"></div></div>
 </div>
@@ -24,13 +25,14 @@
 <!-- Sidebar -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
-    <div class="sidebar-logo">CC</div>
+    <img src="logo.png" class="sidebar-logo-img" alt="CCDash" width="36" height="36">
     <div class="sidebar-brand">
       <span class="sidebar-title">CCDash</span>
-      <span class="sidebar-subtitle">Dashboard</span>
+      <span class="sidebar-subtitle">Usage Dashboard</span>
     </div>
   </div>
-  <nav class="sidebar-nav">
+  <nav class="sidebar-nav" id="sidebarNav">
+    <div class="nav-slider" id="navSlider"></div>
     <a class="nav-item active" data-page="overview" onclick="switchPage('overview')">
       <i class="ph ph-squares-four"></i>
       <span data-i="navOverview">Overview</span>
@@ -58,6 +60,9 @@
     </button>
     <button class="sidebar-btn" onclick="refreshAll()" title="Refresh">
       <i class="ph ph-arrows-clockwise"></i>
+    </button>
+    <button class="sidebar-btn" onclick="togglePrivacy()" id="privacyBtn" title="Privacy Mode">
+      <i class="ph ph-eye"></i>
     </button>
   </div>
 </aside>
@@ -114,6 +119,8 @@
         <div class="today-row" style="margin-top:8px">
           <div class="today-item"><span class="today-num" style="font-size:20px;color:var(--purple)" id="avgDurVal">—</span><span class="today-label" data-i="avgDuration">Avg Duration</span></div>
           <div class="today-item"><span class="today-num" style="font-size:20px;color:var(--green)" id="avgTtftVal">—</span><span class="today-label" data-i="avgTtft">Avg TTFT</span></div>
+          <div class="today-item"><span class="today-num" style="font-size:18px;color:var(--red)" id="burnRate">—</span><span class="today-label">Tok/min <span id="burnBadge" style="font-size:9px;font-weight:700"></span></span></div>
+          <div class="today-item"><span class="today-num" style="font-size:18px;color:var(--green)" id="projCost">—</span><span class="today-label" data-i="projection">Projection</span></div>
         </div>
         <div class="week-bar">
           <span class="week-label" data-i="weekUsage">Weekly</span>
@@ -140,7 +147,7 @@
         <div class="stat-sub"><span><span class="tk-in">↓</span> <b id="cIn">—</b></span><span><span class="tk-out">↑</span> <b id="cOut">—</b></span></div>
       </div>
       <div class="stat-card card">
-        <div class="stat-header"><div class="stat-icon si-g"><i class="ph ph-lightning"></i></div></div>
+        <div class="stat-header"><div class="stat-icon si-g"><i class="ph ph-lightning"></i></div><span id="cacheGrade" style="font:700 11px var(--font);padding:3px 10px;border-radius:20px;background:var(--green-bg)">—</span></div>
         <div class="stat-value" id="cCR">—</div>
         <div class="stat-label" data-i="cacheHit">Cache Hit</div>
         <svg class="sparkline" id="sparkCache" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
@@ -163,13 +170,19 @@
       </div>
     </div>
 
+    <!-- Daily/Weekly Comparison (click to flip) -->
+    <div class="card sec" id="weeklyCompare" style="display:none">
+      <div class="sec-title compare-toggle" id="compareToggle" onclick="toggleCompareMode()"><i class="ph ph-arrows-left-right"></i> <span id="compareTitle">Day over Day</span></div>
+      <div class="flip-container"><div class="flip-inner" id="compareFlip"><div class="flip-front" id="weekCompareContent"></div></div></div>
+    </div>
+
     <!-- Charts section -->
     <div class="card chart-section">
       <div class="chart-header">
         <div><div class="sec-title" data-i="dailyTrend">Daily Trend</div><div class="sec-desc" data-i="dailyTrendDesc">Messages, sessions and tool calls</div></div>
         <div class="chart-controls">
           <div class="tabs"><div class="tab on" onclick="swTab('act')" data-i="dailyTrend">Trend</div><div class="tab" onclick="swTab('tok')" data-i="tokenDist">Token</div><div class="tab" onclick="swTab('hm')" data-i="heatmap">Heatmap</div></div>
-          <div class="range-pills"><div class="pill on" onclick="setRange('7d')">7D</div><div class="pill" onclick="setRange('14d')">14D</div><div class="pill" onclick="setRange('30d')">30D</div><div class="pill" onclick="setRange('60d')">60D</div><div class="pill" onclick="setRange('90d')">90D</div></div>
+          <div class="range-pills"><div class="pill" onclick="setRange('24h')">24H</div><div class="pill on" onclick="setRange('7d')">7D</div><div class="pill" onclick="setRange('14d')">14D</div><div class="pill" onclick="setRange('30d')">30D</div><div class="pill" onclick="setRange('60d')">60D</div><div class="pill" onclick="setRange('90d')">90D</div><div class="pill" onclick="setRange('monthly')" data-i="monthly">Monthly</div></div>
         </div>
       </div>
       <div class="ch-wrap" id="pAct"><div id="chartAct"></div></div>
@@ -181,10 +194,36 @@
   <!-- PAGE: Analytics -->
   <div class="page" id="page-analytics">
     <div class="analytics-grid">
-      <div class="card sec"><div class="sec-title"><i class="ph ph-cpu"></i> <span data-i="modelUsage">Model Usage</span></div><div class="sec-desc" data-i="modelUsageDesc">Token usage and cache efficiency</div><div class="tw"><table><thead><tr><th data-i="model">Model</th><th data-i="input">Input</th><th data-i="output">Output</th><th data-i="cacheRead">Cache R</th><th data-i="cacheCreate">Cache W</th><th data-i="calls">Calls</th><th data-i="hitRate">Hit%</th><th>Cost</th></tr></thead><tbody id="tbMod"></tbody></table></div></div>
+      <div class="card sec"><div class="sec-title"><i class="ph ph-cpu"></i> <span data-i="modelUsage">Model Usage</span></div><div class="sec-desc" data-i="modelUsageDesc">Token usage and cache efficiency</div><div class="tw"><table><thead><tr><th data-i="model">Model</th><th data-i="input">Input</th><th data-i="output">Output</th><th data-i="cacheRead">Cache R</th><th data-i="cacheCreate">Cache W</th><th data-i="calls">Calls</th><th data-i="hitRate">Hit%</th><th data-i="ctxUsage">Ctx%</th><th>Cost</th></tr></thead><tbody id="tbMod"></tbody></table></div></div>
       <div class="card sec"><div class="sec-title"><i class="ph ph-chart-pie-slice"></i> <span data-i="cacheAnalysis">Cache Analysis</span></div><div class="sec-desc" data-i="cacheAnalysisDesc">Cache hit rate distribution</div><div class="ring-c"><div class="ring-ch" id="chartRing"></div><div class="ring-info"><div data-i="cacheHit">Cache Hit</div><div class="ring-val"><span id="rlH">—</span></div><div data-i="cacheCreate">Cache Create</div><div class="ring-val"><span id="rlC">—</span></div><div data-i="directInput">Direct Input</div><div class="ring-val"><span id="rlD">—</span></div></div></div></div>
     </div>
-    <div class="card sec"><div class="sec-title"><i class="ph ph-folder"></i> <span data-i="projectTop">Project TOP 10</span></div><div class="sec-desc" data-i="projectTopDesc">Projects by token usage</div><div class="tw"><table><thead><tr><th data-i="project">Project</th><th data-i="msgs">Msgs</th><th data-i="sessions_l">Sessions</th><th>Token</th><th>%</th></tr></thead><tbody id="tbProj"></tbody></table></div></div>
+    <div class="analytics-grid">
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-wrench"></i> <span data-i="toolUsage">Tool Distribution</span></div>
+        <div class="sec-desc" data-i="toolUsageDesc">Most used tools across all sessions</div>
+        <div class="ring-c"><div class="ring-ch" id="chartTools"></div>
+        <div class="ring-info" id="toolsList"></div></div>
+      </div>
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-clock-afternoon"></i> <span data-i="codingRhythm">Coding Rhythm</span></div>
+        <div class="sec-desc" data-i="codingRhythmDesc">Activity distribution by time of day</div>
+        <div id="rhythmBars" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <!-- Work Mode + Model DNA -->
+    <div class="analytics-grid">
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-strategy"></i> <span data-i="workMode">Work Mode</span></div>
+        <div class="sec-desc" data-i="workModeDesc">Exploration vs Building vs Execution</div>
+        <div id="workModeChart" style="margin-top:12px"></div>
+      </div>
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-dna"></i> <span data-i="modelDNA">Model DNA</span></div>
+        <div class="sec-desc" data-i="modelDNADesc">Token distribution by model family</div>
+        <div id="modelDNAChart" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <div class="card sec"><div class="sec-title"><i class="ph ph-folder"></i> <span data-i="projectTop">Project TOP 10</span></div><div class="sec-desc" data-i="projectTopDesc">Projects by token usage</div><div class="tw"><table><thead><tr><th data-i="project">Project</th><th data-i="msgs">Msgs</th><th data-i="sessions_l">Sessions</th><th>Token</th><th>%</th><th data-i="projectCost">Cost</th></tr></thead><tbody id="tbProj"></tbody></table></div></div>
   </div>
 
   <!-- PAGE: Live Stream -->
@@ -219,7 +258,7 @@
     <div class="card sec">
       <div class="sec-header">
         <div><div class="sec-title"><i class="ph ph-list-bullets"></i> <span data-i="usageLog">Usage Logs</span></div><div class="sec-desc" data-i="usageLogDesc">Detailed API call records</div></div>
-        <div class="sec-header-right"><span class="meta" id="logTotal">—</span><button class="auto-refresh-btn active" id="autoRefreshBtn" onclick="toggleAutoRefresh()"><span class="ar-dot"></span><span id="autoRefreshText" data-i="stopAutoRefresh">Stop Auto-refresh</span></button></div>
+        <div class="sec-header-right"><button class="btn" onclick="exportData('csv')" title="Export CSV"><i class="ph ph-download"></i> <span data-i="exportCSV">CSV</span></button><button class="btn" onclick="exportData('json')" title="Export JSON" style="margin-left:4px"><i class="ph ph-download"></i> <span data-i="exportJSON">JSON</span></button><span class="meta" id="logTotal" style="margin-left:8px">—</span><button class="auto-refresh-btn active" id="autoRefreshBtn" onclick="toggleAutoRefresh()"><span class="ar-dot"></span><span id="autoRefreshText" data-i="stopAutoRefresh">Stop Auto-refresh</span></button></div>
       </div>
       <div class="tw"><table><thead><tr><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="model">Model</th><th><span class="tk-in">↓</span> Input</th><th><span class="tk-out">↑</span> Output</th><th><span class="tk-cw">⟳</span> Cache W</th><th><span class="tk-cr">⟲</span> Cache R</th><th style="color:var(--green)">$ Cost</th><th data-i="ttft">TTFT</th><th data-i="duration">Duration</th><th data-i="status">Status</th></tr></thead><tbody id="tbLogs"></tbody></table></div>
       <div class="pagination">
@@ -240,8 +279,16 @@
     </div>
   </div>
 
+  <!-- Session Detail Modal -->
+  <div class="modal-overlay" id="sessionModal" style="display:none" onclick="closeSessionModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-close" onclick="closeSessionModal()"><i class="ph ph-x" style="font-size:20px;color:var(--text-1);cursor:pointer"></i></div>
+      <div id="sessionModalContent"></div>
+    </div>
+  </div>
+
 </main>
 
-<script src="app.js"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
