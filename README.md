@@ -89,10 +89,9 @@ You're paying for a Claude subscription. But do you actually know:
 
 ## 🎬 Demo
 
-<!-- Replace the link below with the GitHub-hosted video URL after uploading -->
-<!-- To upload: Edit this README on GitHub, drag demo.mp4 into the editor -->
-
-> 📺 [Watch Demo Video (2x speed)](demo.mp4)
+<div align="center">
+  <img src="demo-small.gif" alt="CCDash Demo (2x speed)" width="100%">
+</div>
 
 ## 🖼️ Screenshots
 
