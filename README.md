@@ -89,9 +89,9 @@ You're paying for a Claude subscription. But do you actually know:
 
 ## 🎬 Demo
 
-<div align="center">
-  <img src="demo-small.gif" alt="CCDash Demo (2x speed)" width="100%">
-</div>
+https://github.com/user-attachments/assets/placeholder
+
+> 👆 If video doesn't load, download [demo.mp4](demo.mp4) directly.
 
 ## 🖼️ Screenshots
 
