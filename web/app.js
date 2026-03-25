@@ -290,12 +290,14 @@ let _cdI, curRange = '7d';
 
 /* -- Gauge update -- */
 function updateGauge(pct) {
-  const circ = 2 * Math.PI * 52; // ~326.73
-  const offset = circ - (pct / 100) * circ;
+  const arcLen = 251.33; // half-circle arc length (PI * 80)
+  const offset = arcLen - (pct / 100) * arcLen;
   const fill = document.getElementById('gaugeFill');
   if (fill) {
     fill.style.strokeDashoffset = offset;
-    fill.style.stroke = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--orange)' : 'var(--green)';
+    if (pct > 80) fill.style.stroke = 'var(--red)';
+    else if (pct > 50) fill.style.stroke = 'var(--orange)';
+    else fill.style.stroke = 'url(#g5h)';
   }
   const val = document.getElementById('gaugeVal');
   if (val) val.textContent = pct + '%';
@@ -343,7 +345,7 @@ async function loadStatus() {
           const weekGaugeVal = document.getElementById('weekGaugeVal');
           const weekTokensEl = document.getElementById('weekTokens');
           const pct = Math.round(s7.utilization || 0);
-          const circ = 326.73;
+          const circ = 251.33; // half-circle arc
           if (weekGauge) {
             weekGauge.style.strokeDashoffset = circ - (circ * pct / 100);
             weekGauge.style.stroke = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--orange)' : 'var(--blue)';
@@ -1017,6 +1019,33 @@ async function showSessionDetail(sessionId) {
   }
   statsHtml += filesHtml;
 
+  // Load session chain (async, renders after main content)
+  let chainHtml = '<div id="sessionChainArea"></div>';
+  api('/api/session-chain?id=' + encodeURIComponent(sessionId)).then(cd => {
+    const area = document.getElementById('sessionChainArea');
+    if (!area || !cd || !cd.chain || cd.chain.length <= 1) return;
+    area.innerHTML = `<details style="margin-top:12px">
+      <summary style="cursor:pointer;font:600 12px var(--font);color:var(--text-1);display:flex;align-items:center;gap:6px">
+        <i class="ph ph-git-branch" style="color:var(--accent)"></i>
+        ${curLang==='zh'?'会话链':'Session Chain'} · ${cd.project || ''} · ${cd.total} ${curLang==='zh'?'个会话':'sessions'}
+      </summary>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px">
+        ${cd.chain.map(s => {
+          const isCur = s.is_current;
+          const ts = s.first_ts ? fmtISO(s.first_ts) : '—';
+          const costStr = s.cost_usd ? '$'+s.cost_usd.toFixed(2) : '';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--radius-sm);background:${isCur?'var(--accent-bg)':'var(--bg-3)'};border-left:3px solid ${isCur?'var(--accent)':'var(--bg-5)'};cursor:pointer;transition:all .2s;font-size:12px" onclick="${isCur?'':`closeSessionModal();showSessionDetail('${s.session_id}')`}" ${isCur?'':'title="Click to view"'}>
+            <span style="color:var(--text-2)">${ts}</span>
+            <span class="mono" style="flex:1;color:${isCur?'var(--accent)':'var(--text-1)'}">${s.session_id.slice(0,8)}…</span>
+            <span style="color:var(--text-2)">${s.messages} msgs</span>
+            <span style="color:var(--green)">${costStr}</span>
+            ${isCur?'<span style="font:600 9px var(--font);padding:1px 6px;border-radius:8px;background:var(--accent);color:#fff">CURRENT</span>':''}
+          </div>`;
+        }).join('')}
+      </div>
+    </details>`;
+  });
+
   let eventsHtml = '';
   if (!d.events || d.events.length === 0) {
     eventsHtml = `<div style="text-align:center;padding:20px;color:var(--text-2)">${t.noEvents||'No events found'}</div>`;
@@ -1060,7 +1089,7 @@ async function showSessionDetail(sessionId) {
     <button class="btn" onclick="document.querySelector('.modal').scrollTo({top:0,behavior:'smooth'})" title="Top"><i class="ph ph-arrow-up"></i></button>
     <button class="btn" onclick="document.querySelector('.modal').scrollTo({top:document.querySelector('.modal').scrollHeight,behavior:'smooth'})" title="Bottom"><i class="ph ph-arrow-down"></i></button>
   </div>`;
-  content.innerHTML = `<h3 style="font:700 18px var(--font);color:var(--text-0);margin:0 0 16px 0">${t.sessionDetail||'Session Detail'}</h3>${actionBar}${statsHtml}<div style="margin-top:16px">${eventsHtml}</div>${fab}`;
+  content.innerHTML = `<h3 style="font:700 18px var(--font);color:var(--text-0);margin:0 0 16px 0">${t.sessionDetail||'Session Detail'}</h3>${actionBar}${statsHtml}${chainHtml}<div style="margin-top:16px">${eventsHtml}</div>${fab}`;
 }
 
 function escHtml(s) {

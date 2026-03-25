@@ -831,6 +831,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/tools": self.api_tools,
             "/api/export": self.api_export,
             "/api/rhythm": self.api_rhythm,
+            "/api/session-chain": self.api_session_chain,
             "/api/hourly-trend": self.api_hourly_trend,
         }
 
@@ -1624,6 +1625,134 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
         else:
             self.send_json({"logs": filtered, "total": len(filtered)})
+
+    def api_session_chain(self, params):
+        """Detect session resume chains — sessions linked by parentUuid or leaf_uuid"""
+        session_id = params.get("id", [""])[0]
+        if not session_id:
+            self.send_json({"error": "missing id"}, 400)
+            return
+
+        # Find all sessions in the same project directory
+        target_dir = None
+        if PROJECTS_DIR.exists():
+            for pd in PROJECTS_DIR.iterdir():
+                if not pd.is_dir():
+                    continue
+                candidate = pd / (session_id + ".jsonl")
+                if candidate.exists():
+                    target_dir = pd
+                    break
+                # Fallback scan
+                for jf in pd.glob("*.jsonl"):
+                    try:
+                        with open(jf, "r", encoding="utf-8", errors="replace") as f:
+                            for i, line in enumerate(f):
+                                if i > 5:
+                                    break
+                                if not line.strip():
+                                    continue
+                                evt = json.loads(line.strip())
+                                if evt.get("sessionId") == session_id:
+                                    target_dir = pd
+                                    break
+                        if target_dir:
+                            break
+                    except Exception:
+                        continue
+                if target_dir:
+                    break
+
+        if not target_dir:
+            # Try remote
+            for r in _get_active_remotes():
+                rd = _fetch_remote_cached(r["url"], f"/api/session-chain?id={session_id}", r.get("token"))
+                if rd and rd.get("chain"):
+                    self.send_json(rd)
+                    return
+            self.send_json({"chain": [], "total": 0})
+            return
+
+        # Collect all sessions in this project with metadata
+        sessions = []
+        for jf in sorted(target_dir.glob("*.jsonl")):
+            try:
+                sid = jf.stem
+                first_ts = None
+                last_ts = None
+                msg_count = 0
+                total_cost = 0.0
+                model = ""
+                leaf_uuids = set()
+                parent_refs = set()
+
+                with open(jf, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            evt = json.loads(line)
+                        except:
+                            continue
+                        ts = evt.get("timestamp", "")
+                        if ts and not first_ts:
+                            first_ts = ts
+                        if ts:
+                            last_ts = ts
+                        if evt.get("type") == "user":
+                            msg_count += 1
+                        elif evt.get("type") == "assistant" and "message" in evt:
+                            msg = evt["message"]
+                            if isinstance(msg, dict):
+                                usage = msg.get("usage", {})
+                                m = msg.get("model", "")
+                                if m:
+                                    model = m
+                                inp = usage.get("input_tokens", 0) or 0
+                                out = usage.get("output_tokens", 0) or 0
+                                cr = usage.get("cache_read_input_tokens", 0) or 0
+                                cc = usage.get("cache_creation_input_tokens", 0) or 0
+                                total_cost += _calc_cost(m, inp, out, cr, cc)
+                        # Track UUIDs for chain detection
+                        uuid = evt.get("uuid", "")
+                        if uuid:
+                            leaf_uuids.add(uuid)
+                        parent = evt.get("parentUuid", "")
+                        if parent:
+                            parent_refs.add(parent)
+
+                sessions.append({
+                    "session_id": sid,
+                    "first_ts": first_ts,
+                    "last_ts": last_ts,
+                    "messages": msg_count,
+                    "cost_usd": round(total_cost, 4),
+                    "model": model,
+                    "is_current": sid == session_id,
+                    "_leaf_uuids": leaf_uuids,
+                    "_parent_refs": parent_refs,
+                })
+            except Exception:
+                continue
+
+        # Sort by first timestamp
+        sessions.sort(key=lambda x: x.get("first_ts") or "", reverse=True)
+
+        # Build chain output (strip internal fields)
+        chain = []
+        for s in sessions[:30]:
+            chain.append({
+                "session_id": s["session_id"],
+                "first_ts": s["first_ts"],
+                "last_ts": s["last_ts"],
+                "messages": s["messages"],
+                "cost_usd": s["cost_usd"],
+                "model": s["model"],
+                "is_current": s["is_current"],
+            })
+
+        self.send_json({"chain": chain, "total": len(chain), "project": friendly_project_name(target_dir.name)})
 
     def api_hourly_trend(self, params):
         """Last 24 hours broken down by hour — for the 24H trend view"""
