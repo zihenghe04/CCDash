@@ -50,6 +50,10 @@
       <i class="ph ph-list-bullets"></i>
       <span data-i="navLogs">System Logs</span>
     </a>
+    <a class="nav-item" data-page="settings" onclick="switchPage('settings')">
+      <i class="ph ph-gear"></i>
+      <span data-i="navSettings">Settings</span>
+    </a>
   </nav>
   <div class="sidebar-footer">
     <button class="sidebar-btn" onclick="toggleLang()" id="langBtn" title="Language">
@@ -214,7 +218,7 @@
   <!-- PAGE: Analytics -->
   <div class="page" id="page-analytics">
     <div class="analytics-grid">
-      <div class="card sec"><div class="sec-title"><i class="ph ph-cpu"></i> <span data-i="modelUsage">Model Usage</span></div><div class="sec-desc" data-i="modelUsageDesc">Token usage and cache efficiency</div><div class="tw"><table><thead><tr><th data-i="model">Model</th><th data-i="input">Input</th><th data-i="output">Output</th><th data-i="cacheRead">Cache R</th><th data-i="cacheCreate">Cache W</th><th data-i="calls">Calls</th><th data-i="hitRate">Hit%</th><th data-i="ctxUsage">Ctx%</th><th>Cost</th></tr></thead><tbody id="tbMod"></tbody></table></div></div>
+      <div class="card sec"><div class="sec-title"><i class="ph ph-cpu"></i> <span data-i="modelUsage">Model Usage</span></div><div class="sec-desc" data-i="modelUsageDesc">Token usage and cache efficiency</div><div class="tw"><table><thead><tr><th data-i="model">Model</th><th>Provider</th><th data-i="input">Input</th><th data-i="output">Output</th><th data-i="cacheRead">Cache R</th><th data-i="cacheCreate">Cache W</th><th data-i="calls">Calls</th><th data-i="hitRate">Hit%</th><th data-i="ctxUsage">Ctx%</th><th>Cost</th></tr></thead><tbody id="tbMod"></tbody></table></div></div>
       <div class="card sec"><div class="sec-title"><i class="ph ph-chart-pie-slice"></i> <span data-i="cacheAnalysis">Cache Analysis</span></div><div class="sec-desc" data-i="cacheAnalysisDesc">Cache hit rate distribution</div><div class="ring-c"><div class="ring-ch" id="chartRing"></div><div class="ring-info"><div data-i="cacheHit">Cache Hit</div><div class="ring-val"><span id="rlH">—</span></div><div data-i="cacheCreate">Cache Create</div><div class="ring-val"><span id="rlC">—</span></div><div data-i="directInput">Direct Input</div><div class="ring-val"><span id="rlD">—</span></div></div></div></div>
     </div>
     <div class="analytics-grid">
@@ -296,6 +300,43 @@
       <div class="sec-desc" data-i="recentSessionsDesc">Recently active sessions</div>
       <div class="search-box"><input class="search-input" id="sSearch" oninput="debounceSearch()" placeholder="Search sessions..."><button class="btn" onclick="loadSess()"><i class="ph ph-magnifying-glass"></i> <span data-i="search">Search</span></button></div>
       <div class="tw" style="max-height:400px;overflow-y:auto"><table><thead><tr><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="content">Content</th></tr></thead><tbody id="tbSess"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- PAGE: Settings -->
+  <div class="page" id="page-settings">
+    <div class="card sec" style="max-width:800px">
+      <div class="sec-title"><i class="ph ph-key"></i> <span data-i="apiConfig">API Configuration</span></div>
+      <div class="sec-desc" data-i="apiConfigDesc">Claude.ai session key for quota tracking</div>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+        <div>
+          <label style="font:600 10px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px">Session Key</label>
+          <input type="password" id="settingSessionKey" class="filter-input" style="width:100%" placeholder="sk-ant-sid02-...">
+        </div>
+        <div>
+          <label style="font:600 10px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px">Organization ID</label>
+          <input type="text" id="settingOrgId" class="filter-input" style="width:100%" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+        </div>
+        <button class="btn btn-accent" onclick="saveApiConfig()"><i class="ph ph-floppy-disk"></i> <span data-i="save">Save</span></button>
+      </div>
+    </div>
+
+    <div class="card sec" style="max-width:800px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="sec-title"><i class="ph ph-currency-dollar"></i> <span data-i="modelPricing">Model Pricing</span></div>
+          <div class="sec-desc" data-i="modelPricingDesc">Custom pricing for non-Anthropic models (per million tokens)</div>
+        </div>
+        <button class="btn" onclick="addPricingRow()"><i class="ph ph-plus"></i> <span data-i="addModel">Add Model</span></button>
+      </div>
+      <div id="pricingTable" style="margin-top:16px"></div>
+      <button class="btn btn-accent" onclick="savePricing()" style="margin-top:12px"><i class="ph ph-floppy-disk"></i> <span data-i="savePricing">Save Pricing</span></button>
+    </div>
+
+    <div class="card sec" style="max-width:800px;margin-top:16px">
+      <div class="sec-title"><i class="ph ph-info"></i> <span data-i="detectedModels">Detected Models</span></div>
+      <div class="sec-desc" data-i="detectedModelsDesc">Models found in your usage data</div>
+      <div id="detectedModelsList" style="margin-top:12px"></div>
     </div>
   </div>
 
