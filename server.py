@@ -287,9 +287,43 @@ DEFAULT_CONTEXT_WINDOW = 200000
 
 def _calc_cost(model, inp, out, cache_read, cache_create):
     """Calculate equivalent API cost in USD"""
-    p = MODEL_PRICING.get(model, DEFAULT_PRICING)
+    config = _load_config()
+    custom = config.get("custom_pricing", {}).get(model)
+    if custom:
+        p = custom
+        cr_key = "cache_read"
+        cw_key = "cache_write"  # config uses cache_write, not cache_create
+    else:
+        p = MODEL_PRICING.get(model, DEFAULT_PRICING)
+        cr_key = "cache_read"
+        cw_key = "cache_create"
     return (inp * p["input"] + out * p["output"] +
-            cache_read * p["cache_read"] + cache_create * p["cache_create"]) / 1_000_000
+            cache_read * p.get(cr_key, 0.3) + cache_create * p.get(cw_key, 3.75)) / 1_000_000
+
+
+def _model_provider(model_name):
+    """Classify model by provider"""
+    m = model_name.lower()
+    if m.startswith('claude') or 'anthropic' in m:
+        return 'Anthropic'
+    elif m.startswith('gpt') or 'openai' in m or 'codex' in m:
+        return 'OpenAI'
+    elif 'glm' in m or 'zhipu' in m:
+        return 'ZhipuAI'
+    elif 'minimax' in m:
+        return 'MiniMax'
+    elif 'gemini' in m or 'google' in m:
+        return 'Google'
+    elif 'mistral' in m:
+        return 'Mistral'
+    elif 'llama' in m or 'meta' in m:
+        return 'Meta'
+    elif 'qwen' in m or 'alibaba' in m:
+        return 'Alibaba'
+    elif 'deepseek' in m:
+        return 'DeepSeek'
+    else:
+        return 'Other'
 
 
 # ============================================================
@@ -833,6 +867,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/rhythm": self.api_rhythm,
             "/api/session-chain": self.api_session_chain,
             "/api/hourly-trend": self.api_hourly_trend,
+            "/api/settings": self.api_settings_get,
         }
 
         handler = routes.get(path)
@@ -857,6 +892,29 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_header('Pragma', 'no-cache')
         self.send_header('Expires', '0')
         super().end_headers()
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/settings":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length)
+                data = json.loads(body.decode("utf-8")) if body else {}
+                self.api_settings_post(data)
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
+        else:
+            self.send_json({"error": "not found"}, 404)
+
+    def do_OPTIONS(self):
+        """Handle CORS preflight"""
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     # --- API 实现 ---
 
@@ -1150,6 +1208,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 m_data["avg_context_usage_pct"] = round(avg_input_per_call / ctx_win * 100, 1)
             else:
                 m_data["avg_context_usage_pct"] = 0
+            m_data["provider"] = _model_provider(m_name)
         self.send_json({"models": models})
 
     def api_projects(self, params):
@@ -1827,6 +1886,62 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         """Claude.ai weekly usage from official API"""
         data = _fetch_claude_usage()
         self.send_json(data)
+
+    def api_settings_get(self, params):
+        """GET /api/settings — return config with masked secrets + detected models"""
+        config = _load_config()
+
+        # Mask sensitive fields
+        def _mask(val):
+            if not val or not isinstance(val, str):
+                return ""
+            if len(val) <= 14:
+                return "***"
+            return val[:10] + "***" + val[-4:]
+
+        # Collect detected models from scan cache
+        scan = _scan_all_projects()
+        detected_models = sorted(scan.get("models", {}).keys())
+
+        self.send_json({
+            "remotes": config.get("remotes", []),
+            "claude_session_key": _mask(config.get("claude_session_key", "")),
+            "claude_org_id": _mask(config.get("claude_org_id", "")),
+            "custom_pricing": config.get("custom_pricing", {}),
+            "detected_models": detected_models,
+        })
+
+    def api_settings_post(self, data):
+        """POST /api/settings — merge into config.json"""
+        config = _load_config()
+
+        # Update custom_pricing if provided
+        if "custom_pricing" in data:
+            config["custom_pricing"] = data["custom_pricing"]
+
+        # Update session key only if not masked
+        if "claude_session_key" in data:
+            val = data["claude_session_key"]
+            if isinstance(val, str) and val and "***" not in val:
+                config["claude_session_key"] = val
+
+        # Update org id only if not masked
+        if "claude_org_id" in data:
+            val = data["claude_org_id"]
+            if isinstance(val, str) and val and "***" not in val:
+                config["claude_org_id"] = val
+
+        # Write back to config.json
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            # Clear caches so new pricing takes effect
+            _scan_cache.update(data=None, time=0)
+            _live_cache.update(data=None, time=0)
+            _logs_cache.update(data=None, time=0)
+            self.send_json({"ok": True})
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
 
     def api_rhythm(self, params):
         """编码节奏 + 工作模式分析"""

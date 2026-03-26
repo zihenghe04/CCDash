@@ -4,6 +4,38 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.3.1] — 2026-03-26
+
+### 🚀 New Features
+
+#### Settings Page
+- **Frontend Settings UI** — new sidebar page with gear icon for managing all configuration
+- **API Configuration panel** — edit Session Key and Org ID directly in the browser (values masked on display for security)
+- **Model Pricing editor** — table-based UI to add/edit/delete custom pricing per model (input/output/cache_read/cache_write per MTok)
+- **Detected Models display** — auto-detected list of all models found in usage data, with provider-colored badges
+
+#### Custom Model Pricing
+- **Mixed pricing support** — each API call uses its own model's pricing: custom_pricing → MODEL_PRICING → DEFAULT_PRICING fallback chain
+- **Third-party model support** — GLM-5, MiniMax-M2.5, gpt-5.3-codex and other non-Anthropic models can now have accurate cost estimation
+- **Real-time recalculation** — saving new pricing clears caches and immediately reflects in all cost displays
+
+#### Provider Classification
+- **Automatic provider detection** — models auto-classified by name pattern: Anthropic, OpenAI, ZhipuAI, MiniMax, Google, Mistral, Meta, Alibaba, DeepSeek, Other
+- **Provider column** in model usage table with colored indicator dots
+- **Provider badges** on detected models list
+
+### 🔧 Backend
+- `POST /api/settings` — merge updates into config.json (custom_pricing, session_key, org_id)
+- `GET /api/settings` — returns config with masked sensitive fields + detected models list
+- `_model_provider()` — server-side provider classification function
+- `_calc_cost()` now checks `custom_pricing` from config.json before built-in pricing
+- `do_POST` and `do_OPTIONS` handlers added to HTTP server
+
+### 🐛 Fixes
+- Non-Anthropic models no longer use incorrect Sonnet pricing by default — users can set accurate rates via Settings
+
+---
+
 ## [0.3.0] — 2026-03-26
 
 ### 🚀 New Features

@@ -41,7 +41,11 @@ const I18N = {
     ctxUsage:'上下文%', tokens:'Token',
     sessionDetail:'会话详情', duration:'耗时', cost:'成本', tools:'工具',
     filesAccessed:'访问文件', noEvents:'无事件记录',
-    sessUser:'用户', sessAssistant:'助手'
+    sessUser:'用户', sessAssistant:'助手',
+    navSettings:'设置', apiConfig:'API 配置', apiConfigDesc:'Claude.ai Session Key 用于额度追踪',
+    modelPricing:'模型定价', modelPricingDesc:'自定义非 Anthropic 模型的定价（每百万 Token）',
+    addModel:'添加模型', savePricing:'保存定价', save:'保存',
+    detectedModels:'检测到的模型', detectedModelsDesc:'在使用数据中发现的模型'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -77,7 +81,11 @@ const I18N = {
     ctxUsage:'Ctx%', tokens:'Tokens',
     sessionDetail:'Session Detail', duration:'Duration', cost:'Cost', tools:'Tools',
     filesAccessed:'Files Accessed', noEvents:'No events found',
-    sessUser:'User', sessAssistant:'Assistant'
+    sessUser:'User', sessAssistant:'Assistant',
+    navSettings:'Settings', apiConfig:'API Configuration', apiConfigDesc:'Claude.ai session key for quota tracking',
+    modelPricing:'Model Pricing', modelPricingDesc:'Custom pricing for non-Anthropic models (per million tokens)',
+    addModel:'Add Model', savePricing:'Save Pricing', save:'Save',
+    detectedModels:'Detected Models', detectedModelsDesc:'Models found in your usage data'
   }
 };
 let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
@@ -92,7 +100,7 @@ function applyI18n() {
   const si = document.getElementById('sSearch');
   if (si) si.placeholder = curLang === 'zh' ? '搜索会话...' : 'Search sessions...';
   // Update page title
-  const titleMap = { overview:'navOverview', analytics:'navAnalytics', live:'navLive', logs:'navLogs' };
+  const titleMap = { overview:'navOverview', analytics:'navAnalytics', live:'navLive', logs:'navLogs', settings:'navSettings' };
   const curPage = localStorage.getItem('claude_dash_page') || 'overview';
   const pt = document.getElementById('pageTitle');
   if (pt && titleMap[curPage]) pt.textContent = t[titleMap[curPage]] || curPage;
@@ -248,7 +256,7 @@ function switchPage(pageId) {
   localStorage.setItem('claude_dash_page', pageId);
   // Update page title
   const t = I18N[curLang] || I18N.zh;
-  const titleMap = { overview:'navOverview', analytics:'navAnalytics', live:'navLive', logs:'navLogs' };
+  const titleMap = { overview:'navOverview', analytics:'navAnalytics', live:'navLive', logs:'navLogs', settings:'navSettings' };
   const pt = document.getElementById('pageTitle');
   if (pt && titleMap[pageId]) pt.textContent = t[titleMap[pageId]] || pageId;
   // Lazy load
@@ -256,6 +264,7 @@ function switchPage(pageId) {
   if (pageId === 'live') { loadLive(); }
   if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); }
   if (pageId === 'logs') { loadLogs(); loadSess(); }
+  if (pageId === 'settings') { loadSettings(); }
 }
 
 function moveNavSlider(activeEl) {
@@ -704,7 +713,10 @@ async function loadModels() {
     const cost = v.cost_usd != null ? '$'+v.cost_usd.toFixed(2) : '—';
     const ctxPct = v.avg_context_usage_pct || 0;
     const ctxColor = ctxPct > 80 ? 'var(--red)' : ctxPct > 50 ? 'var(--orange)' : 'var(--green)';
-    return `<tr><td><span class="mdot" style="background:${mC(m)}"></span>${mS(m)}</td><td class="mono"><span class="tk-in">↓</span>${fmt(v.input)}</td><td class="mono"><span class="tk-out">↑</span>${fmt(v.output)}</td><td class="mono"><span class="tk-cr">⟲</span>${fmt(v.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span>${fmt(v.cache_create)}</td><td>${v.calls}</td><td>${hr}%</td><td><span class="ctx-bar-wrap"><span class="ctx-bar-fill" style="width:${Math.min(ctxPct,100)}%;background:${ctxColor}"></span></span><span class="ctx-pct" style="color:${ctxColor}">${ctxPct}%</span></td><td style="color:var(--green);font-weight:600">${cost}</td></tr>`;
+    const provider = v.provider || classifyProvider(m);
+    const provColors = {Anthropic:'var(--accent)',OpenAI:'var(--green)',ZhipuAI:'var(--blue)',MiniMax:'var(--purple)',Google:'var(--orange)',DeepSeek:'var(--cyan,var(--blue))',Mistral:'var(--orange)',Meta:'var(--blue)',Alibaba:'var(--orange)',Other:'var(--text-2)'};
+    const provColor = provColors[provider] || 'var(--text-2)';
+    return `<tr><td><span class="mdot" style="background:${mC(m)}"></span>${mS(m)}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:6px;height:6px;border-radius:50%;background:${provColor}"></span>${provider}</span></td><td class="mono"><span class="tk-in">↓</span>${fmt(v.input)}</td><td class="mono"><span class="tk-out">↑</span>${fmt(v.output)}</td><td class="mono"><span class="tk-cr">⟲</span>${fmt(v.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span>${fmt(v.cache_create)}</td><td>${v.calls}</td><td>${hr}%</td><td><span class="ctx-bar-wrap"><span class="ctx-bar-fill" style="width:${Math.min(ctxPct,100)}%;background:${ctxColor}"></span></span><span class="ctx-pct" style="color:${ctxColor}">${ctxPct}%</span></td><td style="color:var(--green);font-weight:600">${cost}</td></tr>`;
   }).join('');
   // Update overview cost badge from models total (single source of truth)
   const totalModelCost = ms.reduce((s,[,v]) => s + (v.cost_usd||0), 0);
@@ -1349,6 +1361,104 @@ function renderComparison() {
       <div class="week-compare-prev">${prevLabel}: ${m.fmtFn(m.prev)}</div>
     </div>`;
   }).join('')}</div>`;
+}
+
+/* ===== Settings ===== */
+async function loadSettings() {
+  const d = await api('/api/settings');
+  if (!d) return;
+
+  // API config
+  document.getElementById('settingSessionKey').value = d.claude_session_key || '';
+  document.getElementById('settingOrgId').value = d.claude_org_id || '';
+
+  // Pricing table
+  renderPricingTable(d.custom_pricing || {}, d.detected_models || []);
+
+  // Detected models list
+  renderDetectedModels(d.detected_models || []);
+}
+
+function renderPricingTable(pricing, detectedModels) {
+  const el = document.getElementById('pricingTable');
+  if (!el) return;
+  const rows = Object.entries(pricing);
+  el.innerHTML = `<div class="tw"><table style="width:100%"><thead><tr>
+    <th>${curLang==='zh'?'模型':'Model'}</th><th>Input $/M</th><th>Output $/M</th><th>Cache Read $/M</th><th>Cache Write $/M</th><th></th>
+  </tr></thead><tbody id="pricingRows">${rows.map(([model, p]) => pricingRow(model, p)).join('')}</tbody></table></div>`;
+}
+
+function pricingRow(model, p) {
+  return `<tr>
+    <td><input class="filter-input pricing-model" value="${model}" style="width:100%"></td>
+    <td><input class="filter-input pricing-input" type="number" step="0.01" value="${p.input||0}" style="width:80px"></td>
+    <td><input class="filter-input pricing-output" type="number" step="0.01" value="${p.output||0}" style="width:80px"></td>
+    <td><input class="filter-input pricing-cr" type="number" step="0.01" value="${p.cache_read||0}" style="width:80px"></td>
+    <td><input class="filter-input pricing-cw" type="number" step="0.01" value="${p.cache_write||0}" style="width:80px"></td>
+    <td><button class="btn" onclick="this.closest('tr').remove()" style="padding:4px 8px;color:var(--red)"><i class="ph ph-trash"></i></button></td>
+  </tr>`;
+}
+
+function addPricingRow() {
+  const tbody = document.getElementById('pricingRows');
+  if (!tbody) return;
+  tbody.insertAdjacentHTML('beforeend', pricingRow('', {input:3, output:15, cache_read:0.3, cache_write:3.75}));
+}
+
+async function savePricing() {
+  const rows = document.querySelectorAll('#pricingRows tr');
+  const pricing = {};
+  rows.forEach(row => {
+    const model = row.querySelector('.pricing-model')?.value?.trim();
+    if (!model) return;
+    pricing[model] = {
+      input: parseFloat(row.querySelector('.pricing-input')?.value) || 0,
+      output: parseFloat(row.querySelector('.pricing-output')?.value) || 0,
+      cache_read: parseFloat(row.querySelector('.pricing-cr')?.value) || 0,
+      cache_write: parseFloat(row.querySelector('.pricing-cw')?.value) || 0,
+    };
+  });
+  const res = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({custom_pricing: pricing})});
+  if (res.ok) notyf.success(curLang==='zh'?'定价已保存':'Pricing saved');
+  else notyf.error(curLang==='zh'?'保存失败':'Save failed');
+}
+
+async function saveApiConfig() {
+  const sk = document.getElementById('settingSessionKey').value.trim();
+  const oid = document.getElementById('settingOrgId').value.trim();
+  const body = {};
+  if (sk && !sk.includes('***')) body.claude_session_key = sk;
+  if (oid && !oid.includes('***')) body.claude_org_id = oid;
+  const res = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  if (res.ok) notyf.success(curLang==='zh'?'配置已保存':'Config saved');
+  else notyf.error(curLang==='zh'?'保存失败':'Save failed');
+}
+
+function renderDetectedModels(models) {
+  const el = document.getElementById('detectedModelsList');
+  if (!el) return;
+  el.innerHTML = models.map(m => {
+    const provider = classifyProvider(m);
+    const colors = {Anthropic:'var(--accent)',OpenAI:'var(--green)',ZhipuAI:'var(--blue)',MiniMax:'var(--purple)',Google:'var(--orange)',DeepSeek:'var(--cyan,var(--blue))',Other:'var(--text-2)'};
+    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;margin:3px;border-radius:12px;background:var(--bg-3);font:400 11px var(--mono);border:1px solid var(--border-l)">
+      <span style="width:6px;height:6px;border-radius:50%;background:${colors[provider]||'var(--text-2)'}"></span>
+      ${m} <span style="font-size:9px;color:var(--text-2)">${provider}</span>
+    </span>`;
+  }).join('');
+}
+
+function classifyProvider(model) {
+  const m = model.toLowerCase();
+  if (m.startsWith('claude') || m.includes('anthropic')) return 'Anthropic';
+  if (m.startsWith('gpt') || m.includes('openai') || m.includes('codex')) return 'OpenAI';
+  if (m.includes('glm') || m.includes('zhipu')) return 'ZhipuAI';
+  if (m.includes('minimax')) return 'MiniMax';
+  if (m.includes('gemini') || m.includes('google')) return 'Google';
+  if (m.includes('deepseek')) return 'DeepSeek';
+  if (m.includes('qwen')) return 'Alibaba';
+  if (m.includes('mistral')) return 'Mistral';
+  if (m.includes('llama') || m.includes('meta')) return 'Meta';
+  return 'Other';
 }
 
 /* ===== Init ===== */
