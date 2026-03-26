@@ -4,6 +4,61 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.3.0] — 2026-03-26
+
+### 🚀 New Features
+
+#### Session Chain & Detail
+- **Left-right split layout** for session detail modal — chain panel on the left, conversation timeline on the right, independent scrolling
+- **Session chain sorting** — sort by Time / Messages / Cost / Duration, CURRENT session always pinned to top
+- **Last prompt preview** in chain items — see what each session was about at a glance
+- **Duration display** per session (e.g., "2h30m", "15m", "24s")
+- **Chain caching** — navigating between sessions in the same project reuses cached chain data, no re-fetch
+- **Smooth session switching** — clicking a chain item fades out right panel → loads → fades in, left panel stays static with CSS-only active state toggle (zero DOM rebuild)
+
+#### Conversation Timeline
+- **Consecutive assistant folding** — multiple assistant turns between user messages collapse into a summary line showing total turns/tokens/cost/tools, expandable on click
+- **Tool-only compact mode** — assistant events with no text content (just tool calls) render as a single-line inline badge instead of a full card
+- **Empty event filtering** — user/assistant events with no content, no tools, and no tokens are hidden
+- **Prompt prefix cleaning** — strips `-\n` and leading whitespace from user prompts for clean display
+
+#### Remote Agent
+- **`last_prompt` + `duration`** fields added to remote agent's session chain response
+- **Session chain endpoint** (`/api/session-chain`) added to `agent.py`
+
+### 🎨 UI Improvements
+
+#### Session Detail Modal
+- **Chat-bubble styling** — user messages in blue-tinted cards, assistant in green-tinted, with inner content area having its own background/border/padding
+- **Content fade mask** — long messages show a gradient fade at the bottom instead of hard cutoff
+- **Tool badges** — hover turns green with accent glow
+- **File list** — proper background, row separators
+- **Group fold animation** — `translateY` slide-in when expanding folded assistant groups
+- **Floating scroll buttons** target the correct panel (`.modal-main-panel`)
+- **Close button** repositioned for split layout
+
+#### Sidebar Navigation
+- **CSS-only active toggle** for chain items — `transition: all .3s cubic-bezier(.4,0,.2,1)` on background/border/shadow, no DOM rebuild flash
+- **Chain sort buttons** with active highlight
+
+#### General
+- **Spinner animation** (`@keyframes spin`) for loading indicators
+- **Mobile responsive** — modal split layout collapses to vertical on screens < 700px
+
+### 🔧 Backend
+- Session chain/detail requests to remote agent use **direct fetch** (no cache) with **15s timeout** — prevents stale empty results and handles large session files
+- Prompt cleaning in `api_session_chain`: strips `-\n \t` prefixes from user message content
+- Fixed `last_prompt` field name mismatch between session dict and chain output
+
+### 🐛 Fixes
+- **Remote chain empty** — was caused by 5s timeout on large session files, increased to 15s
+- **Remote chain caching stale empty** — switched from `_fetch_remote_cached` to direct `_fetch_remote` for per-session endpoints
+- **Chain sort default** — initial render now sorts by time with CURRENT pinned, Time button highlighted
+- **Null timestamp sort crash** — fallback to `'0'` for null `last_ts` in comparisons
+- **Scroll buttons broken** — updated target from `.modal` to `.modal-main-panel` after layout change
+
+---
+
 ## [0.2.0] — 2026-03-25
 
 ### 🚀 New Features
