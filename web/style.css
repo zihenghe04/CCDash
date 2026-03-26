@@ -417,6 +417,10 @@ tr:nth-child(even) td { background:var(--stripe); }
 
 @keyframes spin { to { transform:rotate(360deg) } }
 
+/* ---- Data Source Tabs ---- */
+.source-tabs { display:flex; gap:6px; align-items:center; }
+.source-tabs .pill { font-size:11px; display:flex; align-items:center; gap:4px; }
+
 /* ---- Timeline group folding ---- */
 .timeline-group { margin:8px 0; border-left:3px solid var(--green); border-radius:0 var(--radius-md) var(--radius-md) 0; background:rgba(74,222,128,0.02); border:1px solid rgba(74,222,128,0.06); border-left:3px solid var(--green); transition:all .25s; }
 .timeline-group[open] { background:rgba(74,222,128,0.04); box-shadow:0 2px 12px rgba(0,0,0,0.05); }
