@@ -221,13 +221,34 @@ def _merge_codex_data(daily, models, projects, total_sessions, total_messages_re
         except Exception:
             continue
 
+def _filter_scan_by_source(scan, source):
+    """Filter a full scan result to only include data from one source"""
+    import copy
+    filtered = copy.deepcopy(scan)
+    # Filter models: claude models have source tag from scan, codex from merge
+    is_codex_model = lambda m: any(k in m.lower() for k in ['gpt','codex']) or m.startswith('codex_')
+    if source == "codex":
+        filtered["models"] = {m:v for m,v in filtered["models"].items() if is_codex_model(m)}
+        filtered["projects"] = {k:v for k,v in filtered["projects"].items() if k.startswith("codex_")}
+    elif source == "claude":
+        filtered["models"] = {m:v for m,v in filtered["models"].items() if not is_codex_model(m)}
+        filtered["projects"] = {k:v for k,v in filtered["projects"].items() if not k.startswith("codex_")}
+    # Recalculate totals
+    filtered["total_tokens"] = sum(v.get("input",0)+v.get("output",0)+v.get("cache_read",0)+v.get("cache_create",0) for v in filtered["models"].values())
+    filtered["total_messages"] = sum(v.get("messages",0) for v in filtered["projects"].values())
+    filtered["total_sessions"] = sum(v.get("sessions",0) for v in filtered["projects"].values())
+    return filtered
+
 def _scan_all(force=False, source="all"):
+    """Always scans everything, caches the full result, then filters by source on return"""
     now = time.time()
-    # Only use cache for source=all (default)
-    if source == "all":
-        with _scan_lock:
-            if not force and _scan_cache["data"] and (now - _scan_cache["time"]) < SCAN_TTL:
-                return _scan_cache["data"]
+    with _scan_lock:
+        if not force and _scan_cache["data"] and (now - _scan_cache["time"]) < SCAN_TTL:
+            full = _scan_cache["data"]
+            if source == "all":
+                return full
+            # Filter cached result by source
+            return _filter_scan_by_source(full, source)
 
     daily = {}
     models = {}
@@ -236,8 +257,8 @@ def _scan_all(force=False, source="all"):
     total_sessions = set()
     total_tokens = 0
 
-    # For codex-only, skip Claude scan
-    skip_claude = (source == "codex")
+    # Always scan everything (filter on return)
+    skip_claude = False
 
     if not skip_claude and not PROJECTS_DIR.exists() and not CODEX_DIR.exists():
         result = {"daily": {}, "models": {}, "projects": {},
@@ -348,6 +369,8 @@ def _scan_all(force=False, source="all"):
     }
     with _scan_lock:
         _scan_cache.update(data=result, time=time.time())
+    if source != "all":
+        return _filter_scan_by_source(result, source)
     return result
 
 

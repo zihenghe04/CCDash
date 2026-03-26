@@ -149,26 +149,123 @@ initTheme();
 let privacyMode = localStorage.getItem('claude_dash_privacy') === 'true';
 /* ---- Data Source Switching ---- */
 let activeSource = 'all';
+/* ---- Data Source Switching (pure frontend, zero API calls) ---- */
+window._allData = {};
+
 function switchSource(src) {
   activeSource = src;
   document.querySelectorAll('.source-tabs .pill').forEach(el => el.classList.toggle('on', el.dataset.source === src));
+
+  // Gauge visibility
   const gaugeCard = document.getElementById('gaugeCard');
   const overviewTop = document.getElementById('overviewTop');
   if (gaugeCard && overviewTop) {
-    if (src === 'codex') {
-      gaugeCard.style.display = 'none';
-      overviewTop.style.gridTemplateColumns = '1fr';
-    } else {
-      gaugeCard.style.display = '';
-      overviewTop.style.gridTemplateColumns = '';
-    }
+    gaugeCard.style.display = src === 'codex' ? 'none' : '';
+    overviewTop.style.gridTemplateColumns = src === 'codex' ? '1fr' : '';
   }
-  // Reload only local-fast APIs (skip remote-heavy ones like refreshAll)
-  Promise.all([loadOverview(), loadCharts(), loadModels(), loadProjects(), loadLive(), loadLogs(), loadSess()]).then(() => {
+
+  // Reload all data from backend with source filter (backend skips remote for non-all)
+  const main = document.querySelector('.page.active');
+  if (main) {
+    main.style.transition = 'opacity .12s ease-out, transform .12s ease-out';
+    main.style.opacity = '0';
+    main.style.transform = 'scale(0.98)';
+  }
+  Promise.all([
+    loadOverview(), loadCharts(), loadModels(), loadProjects(),
+    loadLive(), loadLogs(), loadSess(), loadTools(), loadRhythm()
+  ]).then(() => {
+    if (main) {
+      main.style.transition = 'opacity .2s ease-in, transform .2s ease-in';
+      main.style.opacity = '1';
+      main.style.transform = 'scale(1)';
+    }
     notyf.success(curLang==='zh' ? `数据源: ${src==='all'?'全部':src}` : `Source: ${src==='all'?'All':src}`);
   });
 }
 
+function applySourceFilter() {
+  // Use CSS data-source attribute to show/hide rows — instant, no re-render needed
+  const src = activeSource;
+  // Tables: hide rows that don't match source
+  document.querySelectorAll('[data-row-source]').forEach(el => {
+    if (src === 'all') { el.style.display = ''; return; }
+    el.style.display = (el.dataset.rowSource === src) ? '' : 'none';
+  });
+
+  const _match = (model, source) => {
+    if (src === 'all') return true;
+    if (source) return source === src;
+    const isCodex = /^gpt|codex/i.test(model||'');
+    return src === 'codex' ? isCodex : !isCodex;
+  };
+
+  // Recalculate overview stats from cached models data
+  if (window._allData.models) {
+    const models = window._allData.models.models || {};
+    let totalTokens = 0, totalInput = 0, totalOutput = 0, totalCR = 0, totalCC = 0, totalCalls = 0;
+    for (const [m, v] of Object.entries(models)) {
+      if (!_match(m, v.source)) continue;
+      totalInput += v.input || 0; totalOutput += v.output || 0;
+      totalCR += v.cache_read || 0; totalCC += v.cache_create || 0;
+      totalCalls += v.calls || 0;
+    }
+    totalTokens = totalInput + totalOutput + totalCR + totalCC;
+    document.getElementById('cTok').textContent = fmt(totalTokens);
+    document.getElementById('cIn').textContent = fmt(totalInput);
+    document.getElementById('cOut').textContent = fmt(totalOutput);
+    document.getElementById('cCR').textContent = fmt(totalCR);
+    document.getElementById('cCC').textContent = fmt(totalCC);
+    const allInput = totalInput + totalCR + totalCC;
+    const hitRate = allInput > 0 ? Math.round(totalCR / allInput * 100) : 0;
+    document.getElementById('cRate').textContent = hitRate + '%';
+
+    // Total messages from stat card
+    document.getElementById('cMsg').textContent = fmt(totalCalls);
+    // Model count
+    const filteredModelCount = Object.keys(models).filter(m => _match(m, models[m].source)).length;
+    document.getElementById('cModels').textContent = filteredModelCount;
+
+    // Update cost badge from filtered models
+    const totalCost = Object.entries(models).filter(([m, v]) => _match(m, v.source)).reduce((s,[,v]) => s + (v.cost_usd||0), 0);
+    const costEl = document.getElementById('totalCost');
+    if (costEl) costEl.textContent = '$' + (totalCost >= 1000 ? (totalCost/1000).toFixed(1)+'K' : totalCost.toFixed(2));
+  }
+
+  // Recalculate live totals from visible rows
+  if (window._allData.live) {
+    const calls = (window._allData.live.calls || []).filter(c => _match(c.model, c.source));
+    const badge = document.getElementById('liveBadge');
+    if (badge) badge.textContent = calls.length;
+    document.getElementById('liveN').textContent = calls.length + (curLang==='zh' ? ' 条' : ' calls');
+    const tot = { input:0, output:0, cache_read:0, cache_create:0, calls:calls.length, cost:0 };
+    calls.forEach(c => { tot.input += c.input_tokens||0; tot.output += c.output_tokens||0; tot.cache_read += c.cache_read||0; tot.cache_create += c.cache_create||0; tot.cost += c.cost_usd||0; });
+    document.getElementById('lCalls').textContent = tot.calls;
+    document.getElementById('lIn').textContent = fmt(tot.input);
+    document.getElementById('lOut').textContent = fmt(tot.output);
+    document.getElementById('lCR').textContent = fmt(tot.cache_read);
+    document.getElementById('lCC').textContent = fmt(tot.cache_create);
+    const lCost = document.getElementById('lCost'); if (lCost) lCost.textContent = '$' + tot.cost.toFixed(2);
+  }
+
+  // Recalculate log count
+  const visibleLogs = document.querySelectorAll('#tbLogs tr[data-row-source]');
+  let logCount = 0;
+  visibleLogs.forEach(el => { if (el.style.display !== 'none') logCount++; });
+  const logTotal = document.getElementById('logTotal');
+  if (logTotal) logTotal.textContent = logCount + (curLang==='zh' ? ' 条' : ' records');
+
+  // Session count
+  const visibleSess = document.querySelectorAll('#tbSess tr[data-row-source]');
+  let sessCount = 0;
+  visibleSess.forEach(el => { if (el.style.display !== 'none') sessCount++; });
+
+  // Update today stats
+  document.getElementById('tMsg').textContent = src === 'all' ? (window._allData._todayMsgs || 0) : '—';
+  document.getElementById('tSes').textContent = src === 'all' ? (window._allData._todaySess || 0) : '—';
+}
+
+// sourceParam: pass source to backend for full data filtering (charts, analytics, etc.)
 function sourceParam(prefix) {
   if (!activeSource || activeSource === 'all') return '';
   return (prefix || '&') + 'source=' + activeSource;
@@ -366,13 +463,10 @@ async function loadStatus() {
       sourceTabs.style.display = 'flex';
     }
 
-    // Hide gauge card if no Claude subscription (no session key configured)
+    // Hide gauge card only if Claude Code is not detected at all
     if (gaugeCard) {
-      const hasSessionKey = settings.claude_session_key && !settings.claude_session_key.includes('***') && settings.claude_session_key.length > 10;
-      // Only show gauges if Claude subscription is configured with session key
-      if (!hasClaude || !hasSessionKey) {
+      if (!hasClaude) {
         gaugeCard.style.display = 'none';
-        // Adjust grid to full width for today card
         const overviewTop = document.getElementById('overviewTop');
         if (overviewTop) overviewTop.style.gridTemplateColumns = '1fr';
       }
@@ -383,6 +477,8 @@ async function loadStatus() {
   updateGauge(d.utilization || 0);
   document.getElementById('tMsg').textContent = d.today_messages;
   document.getElementById('tSes').textContent = d.today_sessions;
+  window._allData._todayMsgs = d.today_messages;
+  window._allData._todaySess = d.today_sessions;
   if (d.resets_at) {
     const rt = new Date(d.resets_at);
     clearInterval(_cdI);
@@ -438,8 +534,7 @@ async function loadStatus() {
   } catch(e) { console.error(e); }
 }
 
-async function loadOverview() {
-  const d = await api('/api/overview' + sourceParam('?'));
+function renderOverviewData(d) {
   if (!d) return;
   animateValue('cMsg', fmtRaw(d.total_messages));
   animateValue('cSes', fmtRaw(d.total_sessions));
@@ -529,6 +624,15 @@ function drawRing(inp, cr, cc, rate) {
   window._ringChart.render();
 }
 
+/* ---- loadOverview: fetch, cache, render ---- */
+async function loadOverview() {
+  const d = await api('/api/overview' + sourceParam('?'));
+  if (!d) return;
+  // Cache models breakdown for client-side source filtering
+  window._allData.overview = d;
+  renderOverviewData(d);
+}
+
 /* ---- Cost calculation for daily chart ---- */
 const MODEL_PRICING_JS = {
   'claude-opus-4-6':{input:5,output:25,cache_read:0.5,cache_create:6.25},
@@ -589,7 +693,7 @@ async function loadCharts() {
 
   // 24H mode: use hourly-trend API
   if (is24h) {
-    const h = await api('/api/hourly-trend');
+    const h = await api('/api/hourly-trend' + sourceParam('?'));
     if (!h) return;
     const dates = h.hours.map(x => x.hour);
     const msgs = h.hours.map(x => x.messages);
@@ -710,7 +814,7 @@ async function loadCharts() {
 let chHm;
 async function loadHeatmap() {
   const days = parseInt(curRange) || 30;
-  const d = await api('/api/hourly?days=' + days);
+  const d = await api('/api/hourly?days=' + days + sourceParam());
   if (!d) return;
   const hm = d.heatmap;
   const dk = document.body.dataset.theme === 'dark';
@@ -766,8 +870,7 @@ function setRange(r) {
   if (document.getElementById('pHm').style.display !== 'none') loadHeatmap();
 }
 
-async function loadModels() {
-  const d = await api('/api/models' + sourceParam('?'));
+function renderModelsData(d) {
   if (!d) return;
   const ms = Object.entries(d.models).sort((a,b) => {
     const ta = a[1].input+a[1].output+a[1].cache_read+a[1].cache_create;
@@ -786,7 +889,8 @@ async function loadModels() {
     const provider = v.provider || classifyProvider(m);
     const provColors = {Anthropic:'var(--accent)',OpenAI:'var(--green)',ZhipuAI:'var(--blue)',MiniMax:'var(--purple)',Google:'var(--orange)',DeepSeek:'var(--cyan,var(--blue))',Mistral:'var(--orange)',Meta:'var(--blue)',Alibaba:'var(--orange)',Other:'var(--text-2)'};
     const provColor = provColors[provider] || 'var(--text-2)';
-    return `<tr><td><span class="mdot" style="background:${mC(m)}"></span>${mS(m)}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:6px;height:6px;border-radius:50%;background:${provColor}"></span>${provider}</span></td><td class="mono"><span class="tk-in">↓</span>${fmt(v.input)}</td><td class="mono"><span class="tk-out">↑</span>${fmt(v.output)}</td><td class="mono"><span class="tk-cr">⟲</span>${fmt(v.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span>${fmt(v.cache_create)}</td><td>${v.calls}</td><td>${hr}%</td><td><span class="ctx-bar-wrap"><span class="ctx-bar-fill" style="width:${Math.min(ctxPct,100)}%;background:${ctxColor}"></span></span><span class="ctx-pct" style="color:${ctxColor}">${ctxPct}%</span></td><td style="color:var(--green);font-weight:600">${cost}</td></tr>`;
+    const modSrc = v.source || 'claude';
+    return `<tr data-row-source="${modSrc}"><td><span class="mdot" style="background:${mC(m)}"></span>${mS(m)}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px"><span style="width:6px;height:6px;border-radius:50%;background:${provColor}"></span>${provider}</span></td><td class="mono"><span class="tk-in">↓</span>${fmt(v.input)}</td><td class="mono"><span class="tk-out">↑</span>${fmt(v.output)}</td><td class="mono"><span class="tk-cr">⟲</span>${fmt(v.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span>${fmt(v.cache_create)}</td><td>${v.calls}</td><td>${hr}%</td><td><span class="ctx-bar-wrap"><span class="ctx-bar-fill" style="width:${Math.min(ctxPct,100)}%;background:${ctxColor}"></span></span><span class="ctx-pct" style="color:${ctxColor}">${ctxPct}%</span></td><td style="color:var(--green);font-weight:600">${cost}</td></tr>`;
   }).join('');
   // Update overview cost badge from models total (single source of truth)
   const totalModelCost = ms.reduce((s,[,v]) => s + (v.cost_usd||0), 0);
@@ -795,9 +899,9 @@ async function loadModels() {
   const sel = document.getElementById('filterModel');
   if (sel.options.length <= 1) ms.forEach(([m]) => { const o = document.createElement('option'); o.value = m; o.textContent = mS(m); sel.appendChild(o); });
 }
+async function loadModels() { const d = await api('/api/models' + sourceParam('?')); if(!d) return; window._allData.models = d; renderModelsData(d); }
 
-async function loadProjects() {
-  const d = await api('/api/projects' + sourceParam('?'));
+function renderProjectsData(d) {
   if (!d) return;
   const tot = d.projects.reduce((s,p) => s+p.tokens_total, 0);
   document.getElementById('tbProj').innerHTML = d.projects.map(p => {
@@ -816,30 +920,47 @@ async function loadProjects() {
       dn = dn.replace(/\s*\(cloud\)/, '');
     }
     const pcost = p.cost_usd != null ? '$'+p.cost_usd.toFixed(2) : '—';
-    return `<tr><td title="${p.dir_name||''}">${dn}${sb}</td><td>${fmt(p.messages)}</td><td>${p.sessions}</td><td class="mono">${fmt(p.tokens_total)}</td><td>${pc}%</td><td class="mono" style="color:var(--green)">${pcost}</td></tr>`;
+    const projSrc = p.source === 'codex' ? 'codex' : 'claude';
+    return `<tr data-row-source="${projSrc}"><td title="${p.dir_name||''}">${dn}${sb}</td><td>${fmt(p.messages)}</td><td>${p.sessions}</td><td class="mono">${fmt(p.tokens_total)}</td><td>${pc}%</td><td class="mono" style="color:var(--green)">${pcost}</td></tr>`;
   }).join('');
   const sel = document.getElementById('filterProject');
   if (sel.options.length <= 1) d.projects.forEach(p => { const o = document.createElement('option'); o.value = p.name; o.textContent = p.name; sel.appendChild(o); });
 }
 
+async function loadProjects() { const d = await api('/api/projects' + sourceParam('?')); if(!d) return; window._allData.projects = d; renderProjectsData(d); }
+
+function renderSessionsData(d) {
+  if (!d) return;
+  const sel = document.getElementById('sFilt');
+  if (sel && sel.options.length <= 1 && d.projects) d.projects.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p.split('/').pop() || '~'; sel.appendChild(o); });
+  document.getElementById('tbSess').innerHTML = d.sessions.map(s =>
+    `<tr data-row-source="${s.source||'claude'}" onclick="showSessionDetail('${s.sessionId}')" title="${curLang==='zh'?'点击查看详情':'Click for details'}"><td>${fmtT(s.timestamp)}</td><td title="${s.project}">${s.projectShort}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
+  ).join('');
+}
+
 async function loadSess() {
   const f = document.getElementById('sFilt').value;
   const q = document.getElementById('sSearch').value.trim();
-  let url = '/api/sessions?limit=40' + sourceParam();
+  let url = '/api/sessions?limit=40';
   if (f) url += `&project=${encodeURIComponent(f)}`;
   if (q) url += `&q=${encodeURIComponent(q)}`;
   const d = await api(url);
   if (!d) return;
   const sel = document.getElementById('sFilt');
-  if (sel.options.length <= 1 && d.projects) d.projects.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p.split('/').pop() || '~'; sel.appendChild(o); });
-  document.getElementById('tbSess').innerHTML = d.sessions.map(s =>
-    `<tr onclick="showSessionDetail('${s.sessionId}')" title="${curLang==='zh'?'点击查看详情':'Click for details'}"><td>${fmtT(s.timestamp)}</td><td title="${s.project}">${s.projectShort}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
-  ).join('');
+  window._allData.sessions = d;
+  renderSessionsData(d);
 }
 
+function renderLiveData(d) {
+  if (!d) return;
+  const badge = document.getElementById('liveBadge');
+  if (badge) badge.textContent = (d.calls||[]).length;
+  document.getElementById('liveN').textContent = (d.calls||[]).length + (curLang==='zh' ? ' 条' : ' calls');
+}
 async function loadLive() {
   const d = await api('/api/live' + sourceParam('?'));
   if (!d) return;
+  window._allData.live = d;
   const badge = document.getElementById('liveBadge');
   if (badge) badge.textContent = d.calls.length;
   document.getElementById('liveN').textContent = d.calls.length + (curLang==='zh' ? ' 条' : ' calls');
@@ -849,7 +970,8 @@ async function loadLive() {
     if (c.source === 'codex' || (c.project||'').includes('(codex)')) {
       srcBadge = '<span style="font:600 7px var(--font);padding:0 4px;border-radius:3px;background:var(--green-bg,rgba(74,222,128,0.1));color:var(--green);margin-left:3px">CDX</span>';
     }
-    return `<tr><td>${fmtISO(c.timestamp)}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}${srcBadge}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono" style="color:var(--green)">${cost}</td></tr>`;
+    const rowSrc = c.source || 'claude';
+    return `<tr data-row-source="${rowSrc}"><td>${fmtISO(c.timestamp)}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}${srcBadge}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono" style="color:var(--green)">${cost}</td></tr>`;
   }).join('');
   document.getElementById('lCalls').textContent = d.totals.calls;
   document.getElementById('lIn').textContent = fmt(d.totals.input);
@@ -921,7 +1043,8 @@ async function loadLogs() {
       cb = `<span style="font:600 7px var(--font);padding:0 4px;border-radius:3px;background:var(--blue-bg);color:var(--blue);margin-left:3px">${lbl}</span>`;
     }
     const rowCost = c.cost_usd != null ? '$'+c.cost_usd.toFixed(4) : '—';
-    return `<tr><td title="${c.timestamp}">${ts}</td><td style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}${cb}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono" style="color:var(--green)">${rowCost}</td><td class="mono ${tc}">${ttft}</td><td class="mono">${dur}</td><td><span class="badge ${sc}">${c.status||200}</span></td></tr>`;
+    const logSrc = c.source || 'claude';
+    return `<tr data-row-source="${logSrc}"><td title="${c.timestamp}">${ts}</td><td style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}${cb}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono" style="color:var(--green)">${rowCost}</td><td class="mono ${tc}">${ttft}</td><td class="mono">${dur}</td><td><span class="badge ${sc}">${c.status||200}</span></td></tr>`;
   }).join('');
 
   const info = document.getElementById('paginationInfo');
@@ -970,7 +1093,7 @@ let chTools;
 
 /* ---- Coding Rhythm + Work Mode + Model DNA ---- */
 async function loadRhythm() {
-  const d = await api('/api/rhythm');
+  const d = await api('/api/rhythm' + sourceParam('?'));
   if (!d) return;
 
   // Coding Rhythm — horizontal bars
@@ -1018,7 +1141,7 @@ async function loadRhythm() {
 }
 async function loadTools() {
   try {
-    const d = await api('/api/tools');
+    const d = await api('/api/tools' + sourceParam('?'));
   if (!d) return;
     const entries = Object.entries(d.tools || {}).sort((a,b) => b[1].calls - a[1].calls);
     if (!entries.length) return;

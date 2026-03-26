@@ -4,6 +4,19 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.4.2] — 2026-03-27
+
+### 🐛 Critical Fixes
+- **Cache pollution fix** — `copy.deepcopy` on all scan results before Codex merge, prevents source switching from corrupting cached data
+- **Gauge display fix** — removed faulty session key check that hid gauges even when Claude Code was detected
+- **Source filtering for all metrics** — RPM, TPM, burn rate, avg duration, avg TTFT, today messages all now filter by active source
+- **Daily tokens source filtering** — trend chart tokens filtered by model source
+- **Remote timeout increased** — 5s → 15s to prevent remote data loss on slow connections
+- **Agent cache stability** — remote agent always scans all data, filters on return (no cache pollution)
+- **Consistent scan architecture** — all API handlers use "scan all + deep copy + filter" pattern
+
+---
+
 ## [0.4.1] — 2026-03-26
 
 ### 🔧 Improvements
