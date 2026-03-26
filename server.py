@@ -1320,7 +1320,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if not jsonl_path:
             # Try remote
             for r in _get_active_remotes():
-                rd = _fetch_remote_cached(r["url"], f"/api/session-detail?id={session_id}", r.get("token"))
+                rd = _fetch_remote(r["url"].rstrip("/") + f"/api/session-detail?id={session_id}", r.get("token"), timeout=15)
                 if rd and not rd.get("error"):
                     self.send_json(rd)
                     return
@@ -1664,9 +1664,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     break
 
         if not target_dir:
-            # Try remote
+            # Try remote (no cache, longer timeout for large sessions)
             for r in _get_active_remotes():
-                rd = _fetch_remote_cached(r["url"], f"/api/session-chain?id={session_id}", r.get("token"))
+                rd = _fetch_remote(r["url"].rstrip("/") + f"/api/session-chain?id={session_id}", r.get("token"), timeout=15)
                 if rd and rd.get("chain"):
                     self.send_json(rd)
                     return
@@ -1683,6 +1683,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 msg_count = 0
                 total_cost = 0.0
                 model = ""
+                first_prompt = ""
                 leaf_uuids = set()
                 parent_refs = set()
 
@@ -1702,6 +1703,22 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                             last_ts = ts
                         if evt.get("type") == "user":
                             msg_count += 1
+                            # Always update to get the LAST prompt
+                            um = evt.get("message", {})
+                            if isinstance(um, dict):
+                                c = um.get("content", "")
+                                if isinstance(c, str) and c.strip():
+                                    # Clean common prefixes: "-\n", "- ", leading dashes/newlines
+                                    cleaned = c.lstrip("-\n \t").strip()
+                                    if cleaned:
+                                        first_prompt = cleaned[:80]
+                                elif isinstance(c, list):
+                                    for blk in c:
+                                        if isinstance(blk, dict) and blk.get("type") == "text":
+                                            cleaned = blk.get("text", "").lstrip("-\n \t").strip()
+                                            if cleaned:
+                                                first_prompt = cleaned[:80]
+                                                break
                         elif evt.get("type") == "assistant" and "message" in evt:
                             msg = evt["message"]
                             if isinstance(msg, dict):
@@ -1722,6 +1739,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         if parent:
                             parent_refs.add(parent)
 
+                # Calculate duration
+                dur_str = ""
+                if first_ts and last_ts:
+                    try:
+                        t1 = parse_iso_ts(first_ts)
+                        t2 = parse_iso_ts(last_ts)
+                        if t1 and t2:
+                            secs = int((t2 - t1).total_seconds())
+                            if secs >= 3600:
+                                dur_str = f"{secs//3600}h{(secs%3600)//60}m"
+                            elif secs >= 60:
+                                dur_str = f"{secs//60}m"
+                            else:
+                                dur_str = f"{secs}s"
+                    except Exception:
+                        pass
+
                 sessions.append({
                     "session_id": sid,
                     "first_ts": first_ts,
@@ -1729,6 +1763,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     "messages": msg_count,
                     "cost_usd": round(total_cost, 4),
                     "model": model,
+                    "last_prompt": first_prompt,
+                    "duration": dur_str,
                     "is_current": sid == session_id,
                     "_leaf_uuids": leaf_uuids,
                     "_parent_refs": parent_refs,
@@ -1741,7 +1777,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # Build chain output (strip internal fields)
         chain = []
-        for s in sessions[:30]:
+        for i, s in enumerate(sessions[:30]):
             chain.append({
                 "session_id": s["session_id"],
                 "first_ts": s["first_ts"],
@@ -1749,7 +1785,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "messages": s["messages"],
                 "cost_usd": s["cost_usd"],
                 "model": s["model"],
+                "last_prompt": s.get("last_prompt", ""),
+                "duration": s.get("duration", ""),
                 "is_current": s["is_current"],
+                "index": i + 1,
             })
 
         self.send_json({"chain": chain, "total": len(chain), "project": friendly_project_name(target_dir.name)})

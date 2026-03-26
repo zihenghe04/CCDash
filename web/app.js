@@ -973,9 +973,23 @@ async function showSessionDetail(sessionId) {
   if (!sessionId) return;
   const modal = document.getElementById('sessionModal');
   const content = document.getElementById('sessionModalContent');
+  const isAlreadyOpen = modal.style.display === 'flex';
   modal.style.display = 'flex';
   const t = I18N[curLang] || I18N.zh;
-  content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-2)">${t.loading||'Loading...'}</div>`;
+
+  if (isAlreadyOpen) {
+    // Just toggle active class — don't rebuild DOM
+    if (window._chainData && window._chainData.chain) {
+      window._chainData.chain.forEach(s => s.is_current = s.session_id === sessionId);
+    }
+    document.querySelectorAll('.chain-item').forEach(el => {
+      const isThis = el.getAttribute('data-sid') === sessionId;
+      el.classList.toggle('active', isThis);
+    });
+    // Don't touch main panel yet — keep old content visible while loading
+  } else {
+    content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-2)">${t.loading||'Loading...'}</div>`;
+  }
 
   const d = await api('/api/session-detail?id=' + encodeURIComponent(sessionId));
   if (!d || d.error) {
@@ -1020,80 +1034,243 @@ async function showSessionDetail(sessionId) {
   statsHtml += filesHtml;
 
   // Load session chain (async, renders after main content)
-  let chainHtml = '<div id="sessionChainArea"></div>';
-  api('/api/session-chain?id=' + encodeURIComponent(sessionId)).then(cd => {
+  let chainHtml = `<div id="sessionChainArea"><div style="display:flex;align-items:center;gap:8px;padding:8px 0;font-size:11px;color:var(--text-2)"><i class="ph ph-spinner" style="animation:spin 1s linear infinite"></i> ${curLang==='zh'?'加载会话链...':'Loading session chain...'}</div></div>`;
+
+  // Reuse cached chain if same project (avoid re-fetching when navigating within chain)
+  const cachedChain = window._chainData;
+  const chainPromise = (cachedChain && cachedChain.chain && cachedChain.chain.some(s => s.session_id === sessionId))
+    ? Promise.resolve(cachedChain)
+    : api('/api/session-chain?id=' + encodeURIComponent(sessionId));
+
+  chainPromise.then(cd => {
     const area = document.getElementById('sessionChainArea');
-    if (!area || !cd || !cd.chain || cd.chain.length <= 1) return;
-    area.innerHTML = `<details style="margin-top:12px">
-      <summary style="cursor:pointer;font:600 12px var(--font);color:var(--text-1);display:flex;align-items:center;gap:6px">
-        <i class="ph ph-git-branch" style="color:var(--accent)"></i>
-        ${curLang==='zh'?'会话链':'Session Chain'} · ${cd.project || ''} · ${cd.total} ${curLang==='zh'?'个会话':'sessions'}
-      </summary>
-      <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px">
-        ${cd.chain.map(s => {
-          const isCur = s.is_current;
-          const ts = s.first_ts ? fmtISO(s.first_ts) : '—';
-          const costStr = s.cost_usd ? '$'+s.cost_usd.toFixed(2) : '';
-          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--radius-sm);background:${isCur?'var(--accent-bg)':'var(--bg-3)'};border-left:3px solid ${isCur?'var(--accent)':'var(--bg-5)'};cursor:pointer;transition:all .2s;font-size:12px" onclick="${isCur?'':`closeSessionModal();showSessionDetail('${s.session_id}')`}" ${isCur?'':'title="Click to view"'}>
-            <span style="color:var(--text-2)">${ts}</span>
-            <span class="mono" style="flex:1;color:${isCur?'var(--accent)':'var(--text-1)'}">${s.session_id.slice(0,8)}…</span>
-            <span style="color:var(--text-2)">${s.messages} msgs</span>
-            <span style="color:var(--green)">${costStr}</span>
-            ${isCur?'<span style="font:600 9px var(--font);padding:1px 6px;border-radius:8px;background:var(--accent);color:#fff">CURRENT</span>':''}
-          </div>`;
-        }).join('')}
+    if (!area) return;
+    if (!cd || !cd.chain || cd.chain.length <= 1) { area.innerHTML = ''; return; }
+    // Update is_current flag for the new session
+    cd.chain.forEach(s => s.is_current = s.session_id === sessionId);
+
+    const chainTitle = curLang==='zh'?'会话链':'Session Chain';
+    const sessLabel = curLang==='zh'?'个会话':'sessions';
+    const clickHint = curLang==='zh'?'点击切换':'Click to switch';
+
+    // Store chain data globally for re-sorting
+    window._chainData = cd;
+    window._chainSessionId = sessionId;
+
+    const sortLabels = {
+      time: curLang==='zh'?'时间':'Time',
+      msgs: curLang==='zh'?'消息数':'Messages',
+      cost: curLang==='zh'?'成本':'Cost',
+      duration: curLang==='zh'?'时长':'Duration',
+    };
+
+    area.innerHTML = `<div class="chain-sidebar-header">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <i class="ph ph-git-branch" style="color:var(--accent);font-size:14px"></i>
+          <span style="font:600 12px var(--font);color:var(--text-0)">${chainTitle}</span>
+          <span style="font:400 10px var(--font);color:var(--text-2)">${cd.total}</span>
+        </div>
+        <div style="display:flex;gap:3px;margin-bottom:8px">
+          ${Object.entries(sortLabels).map(([k,v]) => `<button class="btn chain-sort-btn${k==='time'?' active':''}" data-sort="${k}" onclick="sortChain('${k}')" style="font-size:9px;padding:2px 7px;border-radius:12px">${v}</button>`).join('')}
+        </div>
       </div>
-    </details>`;
+      <div id="chainList" class="chain-sidebar-list"></div>`;
+
+    // Initial sort: time descending, CURRENT pinned to top
+    const initChain = [...cd.chain].sort((a,b) => (b.last_ts||'0').localeCompare(a.last_ts||'0'));
+    const curIdx = initChain.findIndex(s => s.is_current);
+    if (curIdx > 0) initChain.unshift(initChain.splice(curIdx, 1)[0]);
+    initChain.forEach((s,i) => s.index = i+1);
+    renderChainList(initChain);
   });
+
+  function sortChain(by) {
+    if (!window._chainData || !window._chainData.chain) return;
+    const chain = [...window._chainData.chain];
+    const sorters = {
+      time: (a,b) => (b.last_ts||'0').localeCompare(a.last_ts||'0'),
+      msgs: (a,b) => (b.messages||0) - (a.messages||0),
+      cost: (a,b) => (b.cost_usd||0) - (a.cost_usd||0),
+      duration: (a,b) => {
+        const parseDur = d => { if (!d) return 0; const h = d.match(/(\d+)h/); const m = d.match(/(\d+)m/); const s = d.match(/(\d+)s/); return (h?parseInt(h[1])*3600:0)+(m?parseInt(m[1])*60:0)+(s?parseInt(s[1]):0); };
+        return parseDur(b.duration) - parseDur(a.duration);
+      },
+    };
+    if (sorters[by]) chain.sort(sorters[by]);
+    // Pin CURRENT to top
+    const ci = chain.findIndex(s => s.is_current);
+    if (ci > 0) chain.unshift(chain.splice(ci, 1)[0]);
+    // Re-index
+    chain.forEach((s,i) => s.index = i+1);
+    renderChainList(chain);
+    // Update active button
+    document.querySelectorAll('.chain-sort-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === by));
+  }
+  // Make sortChain globally accessible
+  window.sortChain = sortChain;
 
   let eventsHtml = '';
   if (!d.events || d.events.length === 0) {
     eventsHtml = `<div style="text-align:center;padding:20px;color:var(--text-2)">${t.noEvents||'No events found'}</div>`;
   } else {
-    eventsHtml = d.events.map(ev => {
-      const timeStr = ev.timestamp ? fmtISO(ev.timestamp) : '';
+    // Filter out empty events, then group consecutive assistant events for folding
+    const filtered = d.events.filter(ev => {
+      if (ev.type === 'user') return !!(ev.content && ev.content.trim());
+      // Assistant: keep if has content, tools, or tokens
+      return !!((ev.content && ev.content.trim()) || (ev.tools_used && ev.tools_used.length) || ev.input_tokens || ev.output_tokens);
+    });
+    const groups = [];
+    let curGroup = null;
+    filtered.forEach(ev => {
       if (ev.type === 'user') {
+        if (curGroup) { groups.push(curGroup); curGroup = null; }
+        groups.push(ev);
+      } else {
+        if (!curGroup) curGroup = { type: 'assistant_group', events: [] };
+        curGroup.events.push(ev);
+      }
+    });
+    if (curGroup) groups.push(curGroup);
+
+    eventsHtml = groups.map(g => {
+      if (g.type === 'user') {
+        const timeStr = g.timestamp ? fmtISO(g.timestamp) : '';
         return `<div class="timeline-event user">
           <div class="timeline-event-header">
-            <span class="timeline-event-type" style="color:var(--blue)">${t.sessUser||'User'}</span>
+            <span class="timeline-event-type">${t.sessUser||'User'}</span>
             <span class="timeline-event-time">${timeStr}</span>
           </div>
-          <div class="timeline-event-content">${escHtml(ev.content||'')}</div>
+          <div class="timeline-event-content">${escHtml(g.content||'')}</div>
         </div>`;
-      } else {
+      }
+      // Assistant group
+      const evts = g.events;
+      const totalCost = evts.reduce((s,e) => s+(e.cost_usd||0), 0);
+      const totalIn = evts.reduce((s,e) => s+(e.input_tokens||0), 0);
+      const totalOut = evts.reduce((s,e) => s+(e.output_tokens||0), 0);
+      const allTools = evts.flatMap(e => e.tools_used||[]);
+      const toolCounts = {};
+      allTools.forEach(t => toolCounts[t] = (toolCounts[t]||0)+1);
+      const firstTime = evts[0]?.timestamp ? fmtISO(evts[0].timestamp) : '';
+      const summaryMeta = [
+        `${evts.length} ${curLang==='zh'?'轮':'turns'}`,
+        '↓'+fmt(totalIn), '↑'+fmt(totalOut),
+        '$'+totalCost.toFixed(4)
+      ].join(' · ');
+      const toolsBadges = Object.entries(toolCounts).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([n,c])=>`<span class="timeline-tool">${n}(${c})</span>`).join('');
+
+      // Helper: render a single assistant event (full or compact)
+      function renderOneAssistant(ev, compact) {
+        const timeStr = ev.timestamp ? fmtISO(ev.timestamp) : '';
+        const hasContent = !!(ev.content && ev.content.trim());
+        const tools = ev.tools_used || [];
         const metaParts = [];
         if (ev.model) metaParts.push(mS(ev.model));
         if (ev.input_tokens) metaParts.push('↓'+fmt(ev.input_tokens));
         if (ev.output_tokens) metaParts.push('↑'+fmt(ev.output_tokens));
         if (ev.cost_usd) metaParts.push('$'+ev.cost_usd.toFixed(4));
-        const toolsLine = (ev.tools_used||[]).length ? `<div class="timeline-tools">${ev.tools_used.map(tn => `<span class="timeline-tool">${tn}</span>`).join('')}</div>` : '';
-        return `<div class="timeline-event assistant">
+
+        // Tool-only (no text content) → compact single line
+        if (!hasContent && tools.length > 0) {
+          return `<div class="timeline-compact">
+            <span class="timeline-event-time">${timeStr}</span>
+            <span class="timeline-event-meta">${metaParts.join(' · ')}</span>
+            ${tools.map(tn=>`<span class="timeline-tool">${tn}</span>`).join('')}
+          </div>`;
+        }
+
+        const toolsLine = tools.length ? `<div class="timeline-tools">${tools.map(tn=>`<span class="timeline-tool">${tn}</span>`).join('')}</div>` : '';
+        const style = compact ? ' style="margin:4px 0;padding:10px 14px;border-left-width:2px"' : '';
+        return `<div class="timeline-event assistant"${style}>
           <div class="timeline-event-header">
-            <span class="timeline-event-type" style="color:var(--green)">${t.sessAssistant||'Assistant'}</span>
+            ${compact?'':`<span class="timeline-event-type">${t.sessAssistant||'Assistant'}</span>`}
             <span class="timeline-event-time">${timeStr}</span>
             <span class="timeline-event-meta">${metaParts.join(' · ')}</span>
           </div>
-          <div class="timeline-event-content">${escHtml(ev.content||'')}</div>
+          ${hasContent?`<div class="timeline-event-content">${escHtml(ev.content)}</div>`:''}
           ${toolsLine}
         </div>`;
       }
+
+      if (evts.length === 1) {
+        return renderOneAssistant(evts[0], false);
+      }
+
+      // Multiple consecutive assistant events — fold them
+      const innerHtml = evts.map(ev => renderOneAssistant(ev, true)).join('');
+
+      return `<details class="timeline-group">
+        <summary class="timeline-group-summary">
+          <span class="timeline-event-type">${t.sessAssistant||'Assistant'}</span>
+          <span class="timeline-event-time">${firstTime}</span>
+          <span class="timeline-event-meta">${summaryMeta}</span>
+          ${toolsBadges ? `<div class="timeline-tools" style="margin-top:4px">${toolsBadges}</div>` : ''}
+        </summary>
+        <div class="timeline-group-body">${innerHtml}</div>
+      </details>`;
     }).join('');
   }
 
   const actionBar = `<div class="modal-actions">
     <button class="btn" onclick="navigator.clipboard.writeText('${sessionId}');notyf.success(curLang==='zh'?'Session ID 已复制':'Session ID copied')"><i class="ph ph-copy"></i> ID</button>
     <button class="btn" onclick="navigator.clipboard.writeText('claude --resume ${sessionId}');notyf.success(curLang==='zh'?'Resume 命令已复制':'Resume command copied')"><i class="ph ph-terminal-window"></i> Resume</button>
-    <button class="btn" onclick="document.querySelector('.modal').scrollTo({top:document.querySelector('.modal').scrollHeight,behavior:'smooth'})"><i class="ph ph-arrow-down"></i> ${curLang==='zh'?'底部':'Bottom'}</button>
+    <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:document.querySelector('.modal-main-panel').scrollHeight,behavior:'smooth'})"><i class="ph ph-arrow-down"></i> ${curLang==='zh'?'底部':'Bottom'}</button>
   </div>`;
   const fab = `<div class="modal-fab">
-    <button class="btn" onclick="document.querySelector('.modal').scrollTo({top:0,behavior:'smooth'})" title="Top"><i class="ph ph-arrow-up"></i></button>
-    <button class="btn" onclick="document.querySelector('.modal').scrollTo({top:document.querySelector('.modal').scrollHeight,behavior:'smooth'})" title="Bottom"><i class="ph ph-arrow-down"></i></button>
+    <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:0,behavior:'smooth'})" title="Top"><i class="ph ph-arrow-up"></i></button>
+    <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:document.querySelector('.modal-main-panel').scrollHeight,behavior:'smooth'})" title="Bottom"><i class="ph ph-arrow-down"></i></button>
   </div>`;
-  content.innerHTML = `<h3 style="font:700 18px var(--font);color:var(--text-0);margin:0 0 16px 0">${t.sessionDetail||'Session Detail'}</h3>${actionBar}${statsHtml}${chainHtml}<div style="margin-top:16px">${eventsHtml}</div>${fab}`;
+  const mainContent = `<h3 style="font:700 18px var(--font);color:var(--text-0);margin:0 0 16px 0">${t.sessionDetail||'Session Detail'}</h3>
+      ${actionBar}${statsHtml}
+      <div style="margin-top:16px">${eventsHtml}</div>
+      ${fab}`;
+
+  if (isAlreadyOpen) {
+    // Smooth swap: fade out old → replace → fade in new
+    const mainPanel = document.querySelector('.modal-main-panel');
+    if (mainPanel) {
+      mainPanel.style.transition = 'opacity .12s ease-out';
+      mainPanel.style.opacity = '0';
+      setTimeout(() => {
+        mainPanel.innerHTML = mainContent;
+        mainPanel.scrollTop = 0;
+        mainPanel.style.transition = 'opacity .2s ease-in';
+        mainPanel.style.opacity = '1';
+      }, 120);
+    }
+  } else {
+    content.innerHTML = `<div class="modal-split">
+      <div class="modal-chain-panel" id="modalChainPanel">${chainHtml}</div>
+      <div class="modal-main-panel" style="transition:opacity .2s">
+        ${mainContent}
+      </div>
+    </div>`;
+  }
 }
 
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderChainList(chain) {
+  const el = document.getElementById('chainList');
+  if (!el) return;
+  el.innerHTML = chain.map((s, i) => {
+    const isCur = s.is_current;
+    const ts = s.last_ts ? new Date(s.last_ts).toLocaleString(curLang==='zh'?'zh-CN':'en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+    const costStr = s.cost_usd ? '$'+s.cost_usd.toFixed(0) : '';
+    let prompt = (s.last_prompt || '').split('\n').map(l=>l.trim()).filter(l=>l).join(' ').trim();
+    if (prompt.length > 35) prompt = prompt.slice(0,35)+'…';
+    return `<div class="chain-item${isCur?' active':''}" data-sid="${s.session_id}" ${isCur?'':`onclick="showSessionDetail('${s.session_id}')"`}>
+      <div class="chain-item-top">
+        <span class="chain-item-idx">#${s.index||(i+1)}</span>
+        ${isCur?'<span class="chain-item-cur">●</span>':''}
+        <span class="chain-item-meta">${s.messages}${curLang==='zh'?'条':'m'} ${costStr}</span>
+      </div>
+      ${prompt?`<div class="chain-item-prompt">${escHtml(prompt)}</div>`:''}
+      <div class="chain-item-time">${ts}</div>
+    </div>`;
+  }).join('');
 }
 
 function closeSessionModal(e) {

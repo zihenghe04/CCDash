@@ -685,6 +685,7 @@ class AgentHandler(BaseHTTPRequestHandler):
                 msg_count = 0
                 total_cost = 0.0
                 model = ""
+                last_prompt = ""
                 with open(jf, "r", encoding="utf-8", errors="replace") as f:
                     for line in f:
                         line = line.strip()
@@ -694,13 +695,34 @@ class AgentHandler(BaseHTTPRequestHandler):
                         ts = evt.get("timestamp", "")
                         if ts and not first_ts: first_ts = ts
                         if ts: last_ts = ts
-                        if evt.get("type") == "user": msg_count += 1
+                        if evt.get("type") == "user":
+                            msg_count += 1
+                            um = evt.get("message", {})
+                            if isinstance(um, dict):
+                                c = um.get("content", "")
+                                if isinstance(c, str):
+                                    cleaned = c.lstrip("-\n \t").strip()
+                                    if cleaned: last_prompt = cleaned[:80]
+                                elif isinstance(c, list):
+                                    for blk in c:
+                                        if isinstance(blk, dict) and blk.get("type") == "text":
+                                            cleaned = blk.get("text", "").lstrip("-\n \t").strip()
+                                            if cleaned: last_prompt = cleaned[:80]; break
                         elif evt.get("type") == "assistant" and isinstance(evt.get("message"), dict):
                             usage = evt["message"].get("usage", {})
                             m = evt["message"].get("model", "")
                             if m: model = m
                             total_cost += _calc_cost(m, usage.get("input_tokens",0) or 0, usage.get("output_tokens",0) or 0, usage.get("cache_read_input_tokens",0) or 0, usage.get("cache_creation_input_tokens",0) or 0)
-                chain.append({"session_id": sid, "first_ts": first_ts, "last_ts": last_ts, "messages": msg_count, "cost_usd": round(total_cost, 4), "model": model, "is_current": sid == session_id})
+                # Duration
+                dur_str = ""
+                if first_ts and last_ts:
+                    try:
+                        t1 = datetime.datetime.fromisoformat(first_ts.replace("Z","+00:00"))
+                        t2 = datetime.datetime.fromisoformat(last_ts.replace("Z","+00:00"))
+                        secs = int((t2-t1).total_seconds())
+                        dur_str = f"{secs//3600}h{(secs%3600)//60}m" if secs>=3600 else f"{secs//60}m" if secs>=60 else f"{secs}s"
+                    except: pass
+                chain.append({"session_id": sid, "first_ts": first_ts, "last_ts": last_ts, "messages": msg_count, "cost_usd": round(total_cost, 4), "model": model, "last_prompt": last_prompt, "duration": dur_str, "is_current": sid == session_id})
             except: continue
 
         chain.sort(key=lambda x: x.get("first_ts") or "", reverse=True)
