@@ -7,6 +7,7 @@ import time
 import datetime
 import threading
 import urllib.parse
+import copy
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -66,7 +67,7 @@ def _load_config():
         return {"remotes": []}
 
 
-def _fetch_remote(url, token=None, timeout=5):
+def _fetch_remote(url, token=None, timeout=15):
     """从远程 Agent 获取 JSON 数据"""
     try:
         req = urllib.request.Request(url)
@@ -225,8 +226,8 @@ def _merge_live(local_live, remote_data_list):
 def friendly_project_name(dir_name: str) -> str:
     """"-Users-john-Desktop-MyProject" → "SEU-Thesis-LaTeX" """
     parts = dir_name.strip("-").split("-")
-    # 找到最后一个有意义的段
-    # Skip common path prefixes
+    # Extract meaningful name
+    # Skip common path, Desktop, Documents 等路径前缀
     skip = {"users", "user", "home", "desktop", "documents", "downloads", "projects", "workspace"}
     meaningful = [p for p in parts if p.lower() not in skip and len(p) > 1]
     if meaningful:
@@ -1207,6 +1208,7 @@ def _scan_today():
                             "cache_read": cr,
                             "cache_create": cc,
                             "cost_usd": row_cost,
+                            "source": "claude",
                         })
                         totals["input"] += inp
                         totals["output"] += out
@@ -1460,6 +1462,7 @@ def _scan_all_logs(force=False):
                             "ttft_ms": ttft_ms,
                             "duration_ms": duration_ms,
                             "cost_usd": round(_calc_cost(model, inp, out, cr, cc), 6),
+                            "source": "claude",
                         })
             except Exception:
                 continue
@@ -1752,40 +1755,37 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         source = params.get("source", ["all"])[0]
         if force:
             _clear_all_caches()
+        # Always scan all sources, then filter — keeps cache stable
+        scan = copy.deepcopy(_scan_all_projects(force=force))
+        codex_scan = _scan_codex(force=force) if _codex_enabled() else None
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
+        # Tag models with source for filtering
+        claude_models = set(_scan_all_projects(force=False).get("models", {}).keys())
+        for m in scan.get("models", {}):
+            scan["models"][m]["source"] = "claude" if m in claude_models else "codex"
+        # Filter by source if needed
         if source == "codex":
-            # Use only Codex data
-            codex_scan = _scan_codex(force=force)
-            if codex_scan:
-                scan = codex_scan
-            else:
-                scan = {"daily": {}, "models": {}, "projects": {}, "tools_stats": {},
-                        "total_messages": 0, "total_sessions": 0, "total_tokens": 0,
-                        "total_input": 0, "total_output": 0, "total_cache_read": 0,
-                        "total_cache_create": 0, "cache_hit_rate": 0}
-            scan.setdefault("projects", {})
-            scan.setdefault("models", {})
-            scan.setdefault("daily", {})
-            scan.setdefault("tools_stats", {})
-            # Compute cache_hit_rate if missing
-            if "cache_hit_rate" not in scan:
-                ti = scan.get("total_input", 0)
-                tcr = scan.get("total_cache_read", 0)
-                tcc = scan.get("total_cache_create", 0)
-                tai = ti + tcr + tcc
-                scan["cache_hit_rate"] = round(tcr / tai * 100, 1) if tai > 0 else 0
-        else:
-            scan = _scan_all_projects(force=force)
-            # Merge Codex data (unless source=claude)
-            if source != "claude":
-                codex_scan = _scan_codex(force=force)
-                if codex_scan:
-                    scan = _merge_codex_into_scan(scan, codex_scan)
+            scan["models"] = {m:v for m,v in scan.get("models",{}).items() if v.get("source") == "codex"}
+        elif source == "claude":
+            scan["models"] = {m:v for m,v in scan.get("models",{}).items() if v.get("source") == "claude"}
+        # Recalculate totals from filtered models
+        if source != "all":
+            scan["total_input"] = sum(v.get("input",0) for v in scan["models"].values())
+            scan["total_output"] = sum(v.get("output",0) for v in scan["models"].values())
+            scan["total_cache_read"] = sum(v.get("cache_read",0) for v in scan["models"].values())
+            scan["total_cache_create"] = sum(v.get("cache_create",0) for v in scan["models"].values())
+            scan["total_tokens"] = scan["total_input"] + scan["total_output"] + scan["total_cache_read"] + scan["total_cache_create"]
+            tai = scan["total_input"] + scan["total_cache_read"] + scan["total_cache_create"]
+            scan["cache_hit_rate"] = round(scan["total_cache_read"] / tai * 100, 1) if tai > 0 else 0
         today_str = datetime.date.today().isoformat()
         today_data = scan["daily"].get(today_str, {})
 
-        # Compute RPM, TPM, avg_duration from recent logs
+        # Compute RPM, TPM, avg_duration from recent logs (filtered by source)
         try:
             logs = _scan_all_logs()
+            if source != "all":
+                logs = [c for c in logs if c.get("source", "claude") == source]
             now = datetime.datetime.now(datetime.timezone.utc)
             recent_5m = [c for c in logs if c.get("timestamp") and
                          (now - parse_iso_ts(c["timestamp"])).total_seconds() < 300]
@@ -1848,7 +1848,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "cache_hit_rate": scan.get("cache_hit_rate", 0),
             "total_projects": len(scan["projects"]),
             "total_models": len(scan["models"]),
-            "today_messages": today_data.get("messages", 0),
+            "today_messages": today_data.get("messages", 0) if source == "all" else len([c for c in logs if c.get("timestamp","").startswith(today_str)]),
             "today_sessions": today_data.get("sessions", 0),
             "today_tools": today_data.get("tools", 0),
             "rpm": rpm,
@@ -1894,18 +1894,22 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         """每日趋势"""
         days = int(params.get("days", ["30"])[0])
         source = params.get("source", ["all"])[0]
-        if source == "codex":
-            codex_scan = _scan_codex()
-            scan = codex_scan if codex_scan else {"daily": {}, "models": {}}
-            scan.setdefault("daily", {})
-            scan.setdefault("models", {})
-        else:
-            scan = _scan_all_projects()
-            if source != "claude":
-                codex_scan = _scan_codex()
-                if codex_scan:
-                    scan = _merge_codex_into_scan(scan, codex_scan)
+        # Always scan all, then filter
+        scan = copy.deepcopy(_scan_all_projects())
+        codex_scan = _scan_codex() if _codex_enabled() else None
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
         daily = scan["daily"]
+
+        # Filter daily tokens by source
+        if source != "all":
+            claude_models = set(_scan_all_projects(force=False).get("models", {}).keys())
+            for date_key, d_data in daily.items():
+                if "tokens" in d_data:
+                    if source == "claude":
+                        d_data["tokens"] = {m:v for m,v in d_data["tokens"].items() if m in claude_models}
+                    elif source == "codex":
+                        d_data["tokens"] = {m:v for m,v in d_data["tokens"].items() if m not in claude_models}
 
         # 按日期排序，取最近 N 天
         sorted_dates = sorted(daily.keys())[-days:]
@@ -2010,17 +2014,21 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def api_models(self, params):
         """模型用量明细（聚合远程 + Codex）"""
         source = params.get("source", ["all"])[0]
-        if source == "codex":
-            codex_scan = _scan_codex()
-            scan = codex_scan if codex_scan else {"models": {}}
-            scan.setdefault("models", {})
-        else:
-            scan = _scan_all_projects()
-            if source != "claude":
-                codex_scan = _scan_codex()
-                if codex_scan:
-                    scan = _merge_codex_into_scan(scan, codex_scan)
+        # Always scan all, then filter
+        claude_model_names = set(_scan_all_projects(force=False).get("models", {}).keys())
+        scan = copy.deepcopy(_scan_all_projects())
+        codex_scan = _scan_codex() if _codex_enabled() else None
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
         models = scan["models"]
+        # Tag source
+        for m in models:
+            models[m]["source"] = "claude" if m in claude_model_names else "codex"
+        # Filter by source
+        if source == "claude":
+            models = {m:v for m,v in models.items() if v.get("source") == "claude"}
+        elif source == "codex":
+            models = {m:v for m,v in models.items() if v.get("source") == "codex"}
         remotes = _get_active_remotes()
         remote_models = [_fetch_remote_cached(r["url"], "/api/models" + (f"?source={source}" if source != "all" else ""), r.get("token")) for r in remotes]
         models = _merge_models(models, [rd for rd in remote_models if rd])
@@ -2045,6 +2053,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             else:
                 m_data["avg_context_usage_pct"] = 0
             m_data["provider"] = _model_provider(m_name)
+            # Determine source: claude takes priority if model exists in both
+            if "source" not in m_data:
+                if m_name in claude_model_names:
+                    m_data["source"] = "claude"
+                elif m_name in codex_model_names:
+                    m_data["source"] = "codex"
+                else:
+                    m_data["source"] = "claude"
         self.send_json({"models": models})
 
     def api_projects(self, params):
@@ -2056,7 +2072,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             scan.setdefault("projects", {})
             scan.setdefault("models", {})
         else:
-            scan = _scan_all_projects()
+            scan = copy.deepcopy(_scan_all_projects())
             if source != "claude":
                 codex_scan = _scan_codex()
                 if codex_scan:
@@ -2158,6 +2174,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "project": project_path,
                 "projectShort": project_short,
                 "firstPrompt": entry.get("display", "")[:100],
+                "source": "claude",
             })
             if len(unique_sessions) >= limit:
                 break
@@ -2175,6 +2192,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     ps = s.get("projectShort", "?")
                     if rname not in ps:
                         s["projectShort"] = ps + f" ({rname})"
+                    if "source" not in s:
+                        s["source"] = "claude"  # Default remote sessions to claude
                     unique_sessions.append(s)
 
         # Merge Codex sessions (skip if source=claude)
@@ -2537,6 +2556,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 rname = r.get("name", "cloud")
                 for c in rd["logs"]:
                     c["project"] = c.get("project", "") + f" ({rname})"
+                    if "source" not in c:
+                        c["source"] = "claude"
                 all_logs.extend(rd["logs"])
         all_logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
 
@@ -2567,7 +2588,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def api_tools(self, params):
         """Tool usage statistics (Claude + Codex)"""
-        scan = _scan_all_projects()
+        scan = copy.deepcopy(_scan_all_projects())
         codex_scan = _scan_codex()
         if codex_scan:
             scan = _merge_codex_into_scan(scan, codex_scan)
@@ -2929,7 +2950,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return val[:10] + "***" + val[-4:]
 
         # Collect detected models from scan cache
-        scan = _scan_all_projects()
+        scan = copy.deepcopy(_scan_all_projects())
         codex_scan = _scan_codex()
         if codex_scan:
             scan = _merge_codex_into_scan(scan, codex_scan)
@@ -2993,7 +3014,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def api_rhythm(self, params):
         """编码节奏 + 工作模式分析"""
-        scan = _scan_all_projects()
+        scan = copy.deepcopy(_scan_all_projects())
         codex_scan = _scan_codex()
         if codex_scan:
             scan = _merge_codex_into_scan(scan, codex_scan)
