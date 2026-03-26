@@ -403,6 +403,17 @@ ssh -L 8421:127.0.0.1:8421 user@server -N -f
 
 [MIT](LICENSE) — 随便用。
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=zihenghe04%2FCCDash&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=zihenghe04/CCDash&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=zihenghe04/CCDash&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=zihenghe04/CCDash&type=date&legend=top-left" />
+ </picture>
+</a>
+
+
 <div align="center">
   <br>
   <p><sub>Built with ☕ and curiosity</sub></p>
