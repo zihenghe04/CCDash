@@ -225,8 +225,7 @@ def _merge_live(local_live, remote_data_list):
 def friendly_project_name(dir_name: str) -> str:
     """"-Users-john-Desktop-MyProject" → "SEU-Thesis-LaTeX" """
     parts = dir_name.strip("-").split("-")
-    # Extract meaningful project name
-    # Skip common path prefixes, Documents 等路径前缀
+    # Skip common path prefixes to extract meaningful project name
     skip = {"users", "user", "home", "desktop", "documents", "downloads", "projects", "workspace"}
     meaningful = [p for p in parts if p.lower() not in skip and len(p) > 1]
     if meaningful:
@@ -1876,7 +1875,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         remotes = _get_active_remotes()
         remote_overviews = []
         for r in remotes:
-            rd = _fetch_remote_cached(r["url"], "/api/overview", r.get("token"))
+            remote_path = "/api/overview" + (f"?source={source}" if source != "all" else "")
+            rd = _fetch_remote_cached(r["url"], remote_path, r.get("token"))
             if rd:
                 remote_overviews.append(rd)
         result = _merge_overview(local, remote_overviews) if remote_overviews else local
@@ -1926,7 +1926,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # 聚合远程
         remotes = _get_active_remotes()
-        remote_daily = [_fetch_remote_cached(r["url"], f"/api/daily?days={days}", r.get("token")) for r in remotes]
+        remote_daily = [_fetch_remote_cached(r["url"], f"/api/daily?days={days}" + (f"&source={source}" if source != "all" else ""), r.get("token")) for r in remotes]
         remote_daily = [rd for rd in remote_daily if rd]
         if remote_daily:
             activity, tokens = _merge_daily(activity, tokens, remote_daily)
@@ -2021,7 +2021,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     scan = _merge_codex_into_scan(scan, codex_scan)
         models = scan["models"]
         remotes = _get_active_remotes()
-        remote_models = [_fetch_remote_cached(r["url"], "/api/models", r.get("token")) for r in remotes]
+        remote_path = "/api/models" + (f"?source={source}" if source != "all" else "")
+        remote_models = [_fetch_remote_cached(r["url"], remote_path, r.get("token")) for r in remotes]
         models = _merge_models(models, [rd for rd in remote_models if rd])
         # Add cost per model + context window usage
         for m_name, m_data in models.items():
@@ -2089,7 +2090,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         remotes = _get_active_remotes()
         remote_proj = []
         for r in remotes:
-            rd = _fetch_remote_cached(r["url"], "/api/projects", r.get("token"))
+            remote_path = "/api/projects" + (f"?source={source}" if source != "all" else "")
+            rd = _fetch_remote_cached(r["url"], remote_path, r.get("token"))
             if rd:
                 rd["_remote_name"] = r.get("name", "cloud")
                 remote_proj.append(rd)
@@ -2500,7 +2502,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         data["totals"][k] = data["totals"].get(k, 0) + codex_today.get("totals", {}).get(k, 0)
                     data["totals"]["cost"] = data["totals"].get("cost", 0) + codex_today.get("totals", {}).get("cost", 0)
         remotes = _get_active_remotes()
-        remote_live = [_fetch_remote_cached(r["url"], "/api/live", r.get("token")) for r in remotes]
+        remote_path = "/api/live" + (f"?source={source}" if source != "all" else "")
+        remote_live = [_fetch_remote_cached(r["url"], remote_path, r.get("token")) for r in remotes]
         remote_live = [rd for rd in remote_live if rd]
         if remote_live:
             data = _merge_live(data, remote_live)
@@ -2528,7 +2531,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # Merge remote logs
         for r in _get_active_remotes():
-            rd = _fetch_remote_cached(r["url"], "/api/logs?limit=200", r.get("token"))
+            rd = _fetch_remote_cached(r["url"], "/api/logs?limit=200" + (f"&source={source}" if source != "all" else ""), r.get("token"))
             if rd and rd.get("logs"):
                 rname = r.get("name", "cloud")
                 for c in rd["logs"]:
