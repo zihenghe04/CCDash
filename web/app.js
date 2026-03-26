@@ -163,9 +163,10 @@ function switchSource(src) {
       overviewTop.style.gridTemplateColumns = '';
     }
   }
-  // Reload all data with source filter
-  notyf.success(curLang==='zh' ? `数据源: ${src==='all'?'全部':src}` : `Source: ${src==='all'?'All':src}`);
-  refreshAll();
+  // Reload only local-fast APIs (skip remote-heavy ones like refreshAll)
+  Promise.all([loadOverview(), loadCharts(), loadModels(), loadProjects(), loadLive(), loadLogs(), loadSess()]).then(() => {
+    notyf.success(curLang==='zh' ? `数据源: ${src==='all'?'全部':src}` : `Source: ${src==='all'?'All':src}`);
+  });
 }
 
 function sourceParam(prefix) {
@@ -824,7 +825,7 @@ async function loadProjects() {
 async function loadSess() {
   const f = document.getElementById('sFilt').value;
   const q = document.getElementById('sSearch').value.trim();
-  let url = '/api/sessions?limit=40';
+  let url = '/api/sessions?limit=40' + sourceParam();
   if (f) url += `&project=${encodeURIComponent(f)}`;
   if (q) url += `&q=${encodeURIComponent(q)}`;
   const d = await api(url);

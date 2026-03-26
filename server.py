@@ -225,7 +225,8 @@ def _merge_live(local_live, remote_data_list):
 def friendly_project_name(dir_name: str) -> str:
     """"-Users-john-Desktop-MyProject" → "SEU-Thesis-LaTeX" """
     parts = dir_name.strip("-").split("-")
-    # Skip common path prefixes to extract meaningful project name
+    # Extract meaningful name
+    # Skip common path, Desktop, Documents 等路径前缀
     skip = {"users", "user", "home", "desktop", "documents", "downloads", "projects", "workspace"}
     meaningful = [p for p in parts if p.lower() not in skip and len(p) > 1]
     if meaningful:
@@ -1871,16 +1872,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             )
         local["total_cost_usd"] = round(total_cost, 4)
 
-        # 聚合远程
-        remotes = _get_active_remotes()
-        remote_overviews = []
-        for r in remotes:
-            remote_path = "/api/overview" + (f"?source={source}" if source != "all" else "")
-            rd = _fetch_remote_cached(r["url"], remote_path, r.get("token"))
-            if rd:
-                remote_overviews.append(rd)
-        result = _merge_overview(local, remote_overviews) if remote_overviews else local
-        result["remote_count"] = len(remote_overviews)
+        # 聚合远程 (only for source=all to avoid slow remote calls on source switch)
+        if source == "all":
+            remotes = _get_active_remotes()
+            remote_overviews = []
+            for r in remotes:
+                rd = _fetch_remote_cached(r["url"], "/api/overview", r.get("token"))
+                if rd:
+                    remote_overviews.append(rd)
+            result = _merge_overview(local, remote_overviews) if remote_overviews else local
+            result["remote_count"] = len(remote_overviews)
+        else:
+            result = local
+            result["remote_count"] = 0
 
         # Cost already computed from local models scan above.
         # For remote cost, approximate from merged overview totals (avoids slow extra API call).
@@ -1926,8 +1930,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # 聚合远程
         remotes = _get_active_remotes()
-        remote_daily = [_fetch_remote_cached(r["url"], f"/api/daily?days={days}" + (f"&source={source}" if source != "all" else ""), r.get("token")) for r in remotes]
-        remote_daily = [rd for rd in remote_daily if rd]
+        if source == "all":
+            remote_daily = [_fetch_remote_cached(r["url"], f"/api/daily?days={days}", r.get("token")) for r in remotes]
+            remote_daily = [rd for rd in remote_daily if rd]
+        else:
+            remote_daily = []
         if remote_daily:
             activity, tokens = _merge_daily(activity, tokens, remote_daily)
             activity = activity[-days:]
@@ -2021,8 +2028,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     scan = _merge_codex_into_scan(scan, codex_scan)
         models = scan["models"]
         remotes = _get_active_remotes()
-        remote_path = "/api/models" + (f"?source={source}" if source != "all" else "")
-        remote_models = [_fetch_remote_cached(r["url"], remote_path, r.get("token")) for r in remotes]
+        if source == "all":
+            remote_models = [_fetch_remote_cached(r["url"], "/api/models", r.get("token")) for r in remotes]
+        else:
+            remote_models = []
         models = _merge_models(models, [rd for rd in remote_models if rd])
         # Add cost per model + context window usage
         for m_name, m_data in models.items():
@@ -2090,8 +2099,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         remotes = _get_active_remotes()
         remote_proj = []
         for r in remotes:
-            remote_path = "/api/projects" + (f"?source={source}" if source != "all" else "")
-            rd = _fetch_remote_cached(r["url"], remote_path, r.get("token"))
+            if source != "all": break
+            rd = _fetch_remote_cached(r["url"], "/api/projects", r.get("token"))
             if rd:
                 rd["_remote_name"] = r.get("name", "cloud")
                 remote_proj.append(rd)
@@ -2100,14 +2109,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_json({"projects": result})
 
     def api_sessions(self, params):
-        """会话列表（支持搜索、项目过滤、日期范围）"""
+        """会话列表（支持搜索、项目过滤、日期范围、数据源过滤）"""
         limit = int(params.get("limit", ["50"])[0])
         project_filter = params.get("project", [""])[0]
         search_query = params.get("q", [""])[0].lower()
+        source = params.get("source", ["all"])[0]
         # 日期范围: "1d", "7d", "30d", 或 "2026-03-20,2026-03-24"
         date_range = params.get("range", [""])[0]
 
-        history = _load_history()
+        history = _load_history() if source != "codex" else []
 
         # 按时间倒序
         entries = sorted(history, key=lambda x: x.get("timestamp", 0), reverse=True)
@@ -2166,8 +2176,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         all_projects = list(set(e.get("project", "") for e in history if e.get("project")))
         all_projects.sort()
 
-        # Merge remote sessions
-        for r in _get_active_remotes():
+        # Merge remote sessions (only for source=all)
+        for r in (_get_active_remotes() if source == "all" else []):
             rd = _fetch_remote_cached(r["url"], "/api/sessions?limit=20", r.get("token"))
             if rd and rd.get("sessions"):
                 rname = r.get("name", "cloud")
@@ -2175,8 +2185,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     s["projectShort"] = s.get("projectShort", "?") + f" ({rname})"
                     unique_sessions.append(s)
 
-        # Merge Codex sessions
-        if _codex_enabled():
+        # Merge Codex sessions (skip if source=claude)
+        if source != "claude" and _codex_enabled():
             try:
                 # Read Codex history.jsonl
                 codex_hist = CODEX_DIR / "history.jsonl"
@@ -2502,8 +2512,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         data["totals"][k] = data["totals"].get(k, 0) + codex_today.get("totals", {}).get(k, 0)
                     data["totals"]["cost"] = data["totals"].get("cost", 0) + codex_today.get("totals", {}).get("cost", 0)
         remotes = _get_active_remotes()
-        remote_path = "/api/live" + (f"?source={source}" if source != "all" else "")
-        remote_live = [_fetch_remote_cached(r["url"], remote_path, r.get("token")) for r in remotes]
+        if source == "all":
+            remote_live = [_fetch_remote_cached(r["url"], "/api/live", r.get("token")) for r in remotes]
+        else:
+            remote_live = []
         remote_live = [rd for rd in remote_live if rd]
         if remote_live:
             data = _merge_live(data, remote_live)
@@ -2531,7 +2543,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # Merge remote logs
         for r in _get_active_remotes():
-            rd = _fetch_remote_cached(r["url"], "/api/logs?limit=200" + (f"&source={source}" if source != "all" else ""), r.get("token"))
+            if source != "all": break
+            rd = _fetch_remote_cached(r["url"], "/api/logs?limit=200", r.get("token"))
             if rd and rd.get("logs"):
                 rname = r.get("name", "cloud")
                 for c in rd["logs"]:

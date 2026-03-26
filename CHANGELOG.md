@@ -7,9 +7,11 @@ All notable changes to CCDash will be documented in this file.
 ## [0.4.1] — 2026-03-26
 
 ### 🔧 Improvements
-- **Remote agent source filtering** — `agent.py` now supports `?source=claude|codex|all` parameter on all API endpoints (overview, daily, models, projects)
-- **End-to-end source isolation** — when switching data source tabs, remote server data is also filtered correctly (previously remote always returned merged data)
-- **Source parameter forwarding** — local server passes `source` to all 6 remote API calls (overview, daily, models, projects, live, logs)
+- **Remote agent source filtering** — `agent.py` supports `?source=claude|codex|all` on all endpoints
+- **Fast source switching** — switching data source tabs skips remote calls entirely (uses local data only), making it instant instead of waiting 5+ seconds
+- **Sessions source filtering** — session list, logs, and live stream all respect the active source tab
+- **No more data pollution** — `source=claude` shows zero Codex entries, `source=codex` shows zero Claude entries, across all views (overview, charts, models, projects, sessions, live, logs)
+- **Remote only on initial load** — remote aggregation only happens on `source=all` (the default), specific source views use pure local data
 
 ---
 
