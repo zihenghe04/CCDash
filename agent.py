@@ -39,8 +39,18 @@ MODEL_PRICING = {
     "claude-sonnet-4-5":          {"input": 3.0,  "output": 15.0,  "cache_read": 0.30,  "cache_create": 3.75},
     "claude-sonnet-4-5-20250929": {"input": 3.0,  "output": 15.0,  "cache_read": 0.30,  "cache_create": 3.75},
     "claude-haiku-4-5-20251001":  {"input": 1.0,  "output": 5.0,   "cache_read": 0.10,  "cache_create": 1.25},
+    "gpt-5.3-codex":              {"input": 1.75, "output": 14.0,  "cache_read": 0.175, "cache_create": 0},
+    "gpt-5.4":                    {"input": 2.50, "output": 15.0,  "cache_read": 0.25,  "cache_create": 0},
+    "gpt-5.4-mini":               {"input": 0.75, "output": 4.50,  "cache_read": 0.075, "cache_create": 0},
+    "gpt-5.2-codex":              {"input": 1.75, "output": 14.0,  "cache_read": 0.175, "cache_create": 0},
+    "gpt-4o":                     {"input": 2.50, "output": 10.0,  "cache_read": 1.25,  "cache_create": 0},
 }
 DEFAULT_PRICING = {"input": 3.0, "output": 15.0, "cache_read": 0.30, "cache_create": 3.75}
+
+# Codex CLI paths
+CODEX_DIR = Path.home() / ".codex"
+CODEX_SESSIONS = CODEX_DIR / "sessions"
+CODEX_ARCHIVED = CODEX_DIR / "archived_sessions"
 
 def _calc_cost(model, inp, out, cache_read, cache_create):
     p = MODEL_PRICING.get(model, DEFAULT_PRICING)
@@ -94,6 +104,123 @@ def ms_to_hour_dow(ms):
 # ============================================================
 # 扫描器
 # ============================================================
+def _read_codex_model():
+    """Read default model from ~/.codex/config.toml"""
+    try:
+        with open(CODEX_DIR / "config.toml") as f:
+            import re
+            for line in f:
+                m = re.match(r'^model\s*=\s*"([^"]+)"', line.strip())
+                if m:
+                    return m.group(1)
+    except Exception:
+        pass
+    return "codex-unknown"
+
+def _merge_codex_data(daily, models, projects, total_sessions, total_messages_ref, total_tokens_ref):
+    """Scan Codex JSONL files and merge into existing data dicts"""
+    if not CODEX_DIR.exists():
+        return
+
+    codex_model = _read_codex_model()
+    codex_files = []
+    for d in [CODEX_SESSIONS, CODEX_ARCHIVED]:
+        if d.exists():
+            codex_files.extend(d.rglob("rollout-*.jsonl"))
+
+    for jf in codex_files:
+        try:
+            sid = jf.stem.split("-", 3)[-1] if "-" in jf.stem else jf.stem
+            first_ts = last_ts = None
+            msg_count = 0
+            last_usage = None
+            model = codex_model
+            proj = "codex"
+            tools = 0
+
+            with open(jf, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        evt = json.loads(line)
+                    except:
+                        continue
+
+                    ts = evt.get("timestamp", "")
+                    if ts and not first_ts:
+                        first_ts = ts
+                    if ts:
+                        last_ts = ts
+
+                    etype = evt.get("type", "")
+                    payload = evt.get("payload", {})
+                    if not isinstance(payload, dict):
+                        continue
+
+                    if etype == "session_meta":
+                        sid = payload.get("id", sid)
+                        cwd = payload.get("cwd", "")
+                        if cwd:
+                            proj = cwd.rstrip("/").split("/")[-1] or "codex"
+                        mp = payload.get("model_provider", "")
+                        # Check turn_context for model
+                    elif etype == "turn_context":
+                        m = payload.get("model", "")
+                        if m:
+                            model = m
+                    elif etype == "event_msg":
+                        sub = payload.get("type", "")
+                        if sub == "user_message":
+                            msg_count += 1
+                        elif sub == "token_count":
+                            info = payload.get("info")
+                            if info and isinstance(info, dict):
+                                last_usage = info.get("total_token_usage", {})
+                    elif etype == "response_item" and payload.get("type") == "function_call":
+                        tools += 1
+
+            if not last_usage and msg_count == 0:
+                continue
+
+            total_sessions.add("codex_" + sid)
+            u = last_usage or {}
+            inp = u.get("input_tokens", 0) or 0
+            out = u.get("output_tokens", 0) or 0
+            cr = u.get("cached_input_tokens", 0) or 0
+            cc = 0
+
+            # Merge into models
+            models.setdefault(model, {"input":0,"output":0,"cache_read":0,"cache_create":0,"calls":0})
+            models[model]["input"] += inp
+            models[model]["output"] += out
+            models[model]["cache_read"] += cr
+            models[model]["calls"] += 1
+
+            # Merge into projects
+            proj_key = "codex_" + proj
+            projects.setdefault(proj_key, {"messages":0,"tokens_total":0,"sessions":set(),"friendly_name":proj+" (Codex)"})
+            projects[proj_key]["messages"] += msg_count
+            projects[proj_key]["tokens_total"] += inp + out + cr
+            if isinstance(projects[proj_key]["sessions"], set):
+                projects[proj_key]["sessions"].add(sid)
+
+            # Merge into daily
+            date = first_ts[:10] if first_ts and len(first_ts) >= 10 else ""
+            if date:
+                daily.setdefault(date, {"messages":0,"sessions":set(),"tools":0,"tokens":{}})
+                daily[date]["messages"] += msg_count
+                if isinstance(daily[date]["sessions"], set):
+                    daily[date]["sessions"].add(sid)
+                daily[date]["tools"] += tools
+                tm = daily[date]["tokens"].setdefault(model, {"input":0,"output":0,"cache_read":0,"cache_create":0})
+                tm["input"] += inp
+                tm["output"] += out
+                tm["cache_read"] += cr
+        except Exception:
+            continue
+
 def _scan_all(force=False):
     now = time.time()
     with _scan_lock:
@@ -192,15 +319,26 @@ def _scan_all(force=False):
                 continue
             total_sessions.add(session_id)
 
+    # Merge Codex CLI data if available
+    try:
+        _merge_codex_data(daily, models, projects, total_sessions, total_messages, total_tokens)
+    except Exception:
+        pass
+
     for d in daily.values():
-        d["sessions"] = len(d.pop("sessions", set()))
+        if isinstance(d.get("sessions"), set):
+            d["sessions"] = len(d.pop("sessions", set()))
     for p in projects.values():
-        p["sessions"] = len(p.pop("sessions", set()))
+        if isinstance(p.get("sessions"), set):
+            p["sessions"] = len(p.pop("sessions", set()))
+
+    total_messages_final = sum(d.get("messages", 0) for d in daily.values())
+    total_tokens_final = sum(v.get("input",0)+v.get("output",0)+v.get("cache_read",0)+v.get("cache_create",0) for v in models.values())
 
     result = {
         "daily": daily, "models": models, "projects": projects,
-        "total_messages": total_messages, "total_sessions": len(total_sessions),
-        "total_tokens": total_tokens,
+        "total_messages": total_messages_final, "total_sessions": len(total_sessions),
+        "total_tokens": total_tokens_final,
     }
     with _scan_lock:
         _scan_cache.update(data=result, time=time.time())

@@ -23,12 +23,22 @@ USAGE_CACHE_FILE = CLAUDE_DIR / ".statusline-usage-cache"
 CONFIG_FILE = CLAUDE_DIR / "dashboard" / "config.json"
 DASHBOARD_DIR = CLAUDE_DIR / "dashboard"
 
+# Codex CLI paths
+CODEX_DIR = Path.home() / ".codex"
+CODEX_SESSIONS_DIR = CODEX_DIR / "sessions"
+CODEX_ARCHIVED_DIR = CODEX_DIR / "archived_sessions"
+CODEX_CONFIG_FILE = CODEX_DIR / "config.toml"
+
 # ============================================================
 # 缓存
 # ============================================================
 _scan_cache = {"data": None, "time": 0, "file_mtimes": {}}
 _scan_lock = threading.Lock()
 SCAN_TTL = 300  # 5 minutes
+
+_codex_cache = {"data": None, "time": 0}
+_codex_lock = threading.Lock()
+CODEX_TTL = 300
 
 _live_cache = {"data": None, "time": 0}
 LIVE_TTL = 10
@@ -38,6 +48,8 @@ HISTORY_TTL = 60
 
 _remote_cache = {}  # {url: {"data": ..., "time": ...}}
 REMOTE_TTL = 15
+
+_codex_logs_cache = {"data": None, "time": 0}
 
 _claude_usage_cache = {"data": None, "time": 0}
 CLAUDE_USAGE_TTL = 60
@@ -86,6 +98,8 @@ def _clear_all_caches():
     _remote_cache.clear()
     _live_cache.update(data=None, time=0)
     _history_cache.update(data=None, time=0, mtime=0)
+    _codex_cache.update(data=None, time=0)
+    _codex_logs_cache.update(data=None, time=0)
 
 
 def _get_active_remotes():
@@ -209,9 +223,10 @@ def _merge_live(local_live, remote_data_list):
 # 工具函数
 # ============================================================
 def friendly_project_name(dir_name: str) -> str:
-    """"-Users-john-Desktop-MyProject" → "MyProject" """
+    """"-Users-john-Desktop-MyProject" → "SEU-Thesis-LaTeX" """
     parts = dir_name.strip("-").split("-")
-    # Skip common path prefixes to extract meaningful project name
+    # Extract meaningful project name
+    # Skip common path prefixes, Documents 等路径前缀
     skip = {"users", "user", "home", "desktop", "documents", "downloads", "projects", "workspace"}
     meaningful = [p for p in parts if p.lower() not in skip and len(p) > 1]
     if meaningful:
@@ -253,8 +268,68 @@ def ms_to_hour_dow(ms: int):
 
 
 # ============================================================
-# Model pricing (per million tokens, USD)
+# Dynamic pricing from LiteLLM (2594 models, 24h cache)
 # ============================================================
+LITELLM_URL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+_litellm_cache = {"data": None, "time": 0}
+LITELLM_TTL = 86400  # 24 hours
+
+def _fetch_litellm_pricing():
+    """Fetch model pricing from LiteLLM GitHub (cached 24h)"""
+    now = time.time()
+    if _litellm_cache["data"] and (now - _litellm_cache["time"]) < LITELLM_TTL:
+        return _litellm_cache["data"]
+    try:
+        req = urllib.request.Request(LITELLM_URL)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+            # Convert to our format: per_token → per_million
+            pricing = {}
+            for model_name, info in raw.items():
+                if not isinstance(info, dict):
+                    continue
+                inp = info.get("input_cost_per_token", 0)
+                out = info.get("output_cost_per_token", 0)
+                cr = info.get("cache_read_input_token_cost", 0)
+                cw = info.get("cache_creation_input_token_cost", 0)
+                ctx = info.get("max_input_tokens") or info.get("max_tokens", 0)
+                if inp or out:
+                    pricing[model_name] = {
+                        "input": round(inp * 1e6, 4),
+                        "output": round(out * 1e6, 4),
+                        "cache_read": round(cr * 1e6, 4),
+                        "cache_create": round(cw * 1e6, 4),
+                        "context_window": ctx,
+                    }
+            _litellm_cache["data"] = pricing
+            _litellm_cache["time"] = now
+            print(f"  [LiteLLM] 获取定价成功: {len(pricing)} 模型")
+            return pricing
+    except Exception as e:
+        print(f"  [LiteLLM] 获取定价失败: {e}")
+        return {}
+
+def _get_model_pricing(model_name):
+    """Get pricing for a model: custom → LiteLLM → hardcoded → default"""
+    # 1. Check user custom pricing
+    config = _load_config()
+    custom = config.get("custom_pricing", {}).get(model_name)
+    if custom:
+        return custom
+    # 2. Check LiteLLM dynamic pricing
+    litellm = _fetch_litellm_pricing()
+    if model_name in litellm:
+        return litellm[model_name]
+    # 3. Try partial match (e.g., "claude-opus-4-6" might be logged differently)
+    for k, v in litellm.items():
+        if model_name in k or k in model_name:
+            return v
+    # 4. Fall back to hardcoded
+    if model_name in MODEL_PRICING:
+        return MODEL_PRICING[model_name]
+    return DEFAULT_PRICING
+
+# Hardcoded fallback (used when LiteLLM is unreachable)
 MODEL_PRICING = {
     # Opus 4.6 / 4.5: $5 input, $25 output, cache_write(5m)=$6.25, cache_read=$0.50
     "claude-opus-4-6":            {"input": 5.0,  "output": 25.0,  "cache_read": 0.50,  "cache_create": 6.25},
@@ -269,6 +344,17 @@ MODEL_PRICING = {
     "claude-sonnet-4-20250514":   {"input": 3.0,  "output": 15.0,  "cache_read": 0.30,  "cache_create": 3.75},
     # Haiku 4.5: $1 input, $5 output
     "claude-haiku-4-5-20251001":  {"input": 1.0,  "output": 5.0,   "cache_read": 0.10,  "cache_create": 1.25},
+    # GPT/Codex models (OpenAI official pricing: https://developers.openai.com/api/docs/pricing)
+    "gpt-5.3-codex":              {"input": 1.75, "output": 14.0,  "cache_read": 0.175, "cache_create": 0},
+    "gpt-5.3-chat-latest":        {"input": 1.75, "output": 14.0,  "cache_read": 0.175, "cache_create": 0},
+    "gpt-5.4":                    {"input": 2.50, "output": 15.0,  "cache_read": 0.25,  "cache_create": 0},
+    "gpt-5.4-mini":               {"input": 0.75, "output": 4.50,  "cache_read": 0.075, "cache_create": 0},
+    "gpt-5.4-nano":               {"input": 0.20, "output": 1.25,  "cache_read": 0.02,  "cache_create": 0},
+    "gpt-5.4-pro":                {"input": 30.0, "output": 180.0, "cache_read": 30.0,  "cache_create": 0},
+    "gpt-5.2-codex":              {"input": 1.75, "output": 14.0,  "cache_read": 0.175, "cache_create": 0},
+    "gpt-5-mini":                 {"input": 0.75, "output": 4.50,  "cache_read": 0.075, "cache_create": 0},
+    "gpt-4o":                     {"input": 2.50, "output": 10.0,  "cache_read": 1.25,  "cache_create": 0},
+    "gpt-4o-mini":                {"input": 0.15, "output": 0.60,  "cache_read": 0.075, "cache_create": 0},
 }
 DEFAULT_PRICING = {"input": 3.0, "output": 15.0, "cache_read": 0.30, "cache_create": 3.75}
 
@@ -282,23 +368,18 @@ CONTEXT_WINDOWS = {
     "claude-haiku-4-5-20251001": 200000,
     "claude-opus-4-1-20250805": 200000,
     "claude-opus-4-20250514": 200000,
+    "gpt-5.3-codex": 258400,
+    "gpt-5.4": 258400,
+    "gpt-4o": 128000,
 }
 DEFAULT_CONTEXT_WINDOW = 200000
 
 def _calc_cost(model, inp, out, cache_read, cache_create):
-    """Calculate equivalent API cost in USD"""
-    config = _load_config()
-    custom = config.get("custom_pricing", {}).get(model)
-    if custom:
-        p = custom
-        cr_key = "cache_read"
-        cw_key = "cache_write"  # config uses cache_write, not cache_create
-    else:
-        p = MODEL_PRICING.get(model, DEFAULT_PRICING)
-        cr_key = "cache_read"
-        cw_key = "cache_create"
-    return (inp * p["input"] + out * p["output"] +
-            cache_read * p.get(cr_key, 0.3) + cache_create * p.get(cw_key, 3.75)) / 1_000_000
+    """Calculate equivalent API cost in USD using: custom → LiteLLM → hardcoded → default"""
+    p = _get_model_pricing(model)
+    return (inp * p.get("input", 3.0) + out * p.get("output", 15.0) +
+            cache_read * p.get("cache_read", 0.3) +
+            cache_create * (p.get("cache_create", 0) or p.get("cache_write", 3.75))) / 1_000_000
 
 
 def _model_provider(model_name):
@@ -518,6 +599,510 @@ def _scan_all_projects(force=False):
 
 
 # ============================================================
+# Codex CLI 数据源检测与配置
+# ============================================================
+def _codex_enabled():
+    """Check if Codex data source is enabled"""
+    config = _load_config()
+    ds = config.get("data_sources", {})
+    codex_cfg = ds.get("codex_cli", {})
+    if "enabled" in codex_cfg:
+        return codex_cfg["enabled"]
+    # Auto-detect: check if ~/.codex/ exists and has session files
+    return CODEX_SESSIONS_DIR.exists() or CODEX_ARCHIVED_DIR.exists()
+
+
+def _read_codex_model():
+    """Read model name from ~/.codex/config.toml"""
+    try:
+        import re
+        with open(CODEX_CONFIG_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+        # Find top-level 'model = "..."' before any [section]
+        # Split on first section header
+        top_level = content.split("[")[0] if "[" in content else content
+        m = re.search(r'^model\s*=\s*"([^"]+)"', top_level, re.MULTILINE)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return "codex-unknown"
+
+
+# ============================================================
+# Codex CLI JSONL 扫描器
+# ============================================================
+def _scan_codex(force=False):
+    """Scan ~/.codex/sessions/ and ~/.codex/archived_sessions/ for Codex usage data"""
+    now = time.time()
+    with _codex_lock:
+        if not force and _codex_cache["data"] and (now - _codex_cache["time"]) < CODEX_TTL:
+            return _codex_cache["data"]
+
+    if not _codex_enabled():
+        return None
+
+    print(f"  [Codex Scanner] 开始扫描 Codex 数据...")
+    t0 = time.time()
+
+    default_model = _read_codex_model()
+
+    daily = {}
+    models = {}
+    projects = {}
+    tools_stats = {}
+    total_messages = 0
+    total_sessions = set()
+    total_tokens = 0
+
+    # Collect all rollout JSONL files
+    session_files = []
+    for search_dir in [CODEX_SESSIONS_DIR, CODEX_ARCHIVED_DIR]:
+        if not search_dir.exists():
+            continue
+        for jsonl_file in search_dir.rglob("rollout-*.jsonl"):
+            session_files.append(jsonl_file)
+
+    file_count = 0
+    for jsonl_file in session_files:
+        file_count += 1
+        try:
+            events = []
+            with open(jsonl_file, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        events.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+
+            if not events:
+                continue
+
+            # Extract session metadata
+            session_id = ""
+            cwd = ""
+            model = default_model
+            first_ts = ""
+            last_ts = ""
+            user_messages = 0
+            tool_calls_in_session = {}
+
+            # Find the LAST token_count event with non-null info and total_token_usage
+            last_token_usage = None
+            model_context_window = 200000
+
+            for evt in events:
+                evt_type = evt.get("type", "")
+                ts = evt.get("timestamp", "")
+
+                if ts:
+                    if not first_ts:
+                        first_ts = ts
+                    last_ts = ts
+
+                if evt_type == "session_meta":
+                    payload = evt.get("payload", {})
+                    session_id = payload.get("id", "") or ""
+                    cwd = payload.get("cwd", "") or ""
+
+                elif evt_type == "turn_context":
+                    payload = evt.get("payload", {})
+                    m = payload.get("model", "")
+                    if m:
+                        model = m
+
+                elif evt_type == "event_msg":
+                    payload = evt.get("payload", {})
+                    sub_type = payload.get("type", "")
+
+                    if sub_type == "user_message":
+                        user_messages += 1
+
+                    elif sub_type == "token_count":
+                        info = payload.get("info")
+                        if info and isinstance(info, dict):
+                            tu = info.get("total_token_usage")
+                            if tu and isinstance(tu, dict):
+                                last_token_usage = tu
+                            mcw = info.get("model_context_window")
+                            if mcw:
+                                model_context_window = mcw
+
+                elif evt_type == "response_item":
+                    payload = evt.get("payload", {})
+                    if payload.get("type") == "function_call":
+                        tool_name = payload.get("name", "unknown")
+                        if tool_name:
+                            tool_calls_in_session[tool_name] = tool_calls_in_session.get(tool_name, 0) + 1
+
+            if not session_id:
+                # Derive from filename
+                session_id = jsonl_file.stem.replace("rollout-", "")
+
+            # Extract token usage from the LAST cumulative token_count event
+            inp = 0
+            out = 0
+            cache_read = 0
+            cache_create = 0
+            reasoning_tokens = 0
+
+            if last_token_usage:
+                inp = last_token_usage.get("input_tokens", 0) or 0
+                cache_read = last_token_usage.get("cached_input_tokens", 0) or 0
+                out = last_token_usage.get("output_tokens", 0) or 0
+                reasoning_tokens = last_token_usage.get("reasoning_output_tokens", 0) or 0
+
+            tok_sum = inp + out + cache_read + cache_create
+            total_tokens += tok_sum
+            total_messages += user_messages
+
+            # Project from cwd
+            proj_name = cwd or "codex-unknown"
+            friendly = cwd.rstrip("/").split("/")[-1] if cwd else "codex"
+
+            # Date from first timestamp
+            date = ts_to_date(first_ts) if first_ts else ""
+
+            if date and user_messages > 0:
+                daily.setdefault(date, {
+                    "messages": 0, "sessions": set(), "tools": 0, "tokens": {}
+                })
+                daily[date]["messages"] += user_messages
+                daily[date]["sessions"].add(session_id)
+
+                # Tools
+                total_tool_calls = sum(tool_calls_in_session.values())
+                if total_tool_calls:
+                    daily[date]["tools"] += total_tool_calls
+
+                # Token data
+                if tok_sum > 0:
+                    t_model = daily[date]["tokens"].setdefault(model, {
+                        "input": 0, "output": 0, "cache_read": 0, "cache_create": 0
+                    })
+                    t_model["input"] += inp
+                    t_model["output"] += out
+                    t_model["cache_read"] += cache_read
+                    t_model["cache_create"] += cache_create
+
+            # Models aggregate
+            if tok_sum > 0 or user_messages > 0:
+                models.setdefault(model, {
+                    "input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "calls": 0,
+                    "context_window": model_context_window
+                })
+                models[model]["input"] += inp
+                models[model]["output"] += out
+                models[model]["cache_read"] += cache_read
+                models[model]["cache_create"] += cache_create
+                models[model]["calls"] += 1
+
+            # Projects aggregate
+            projects.setdefault(proj_name, {
+                "messages": 0, "tokens_total": 0,
+                "sessions": set(), "friendly_name": friendly,
+                "source": "codex"
+            })
+            projects[proj_name]["messages"] += user_messages
+            projects[proj_name]["tokens_total"] += tok_sum
+            projects[proj_name]["sessions"].add(session_id)
+            pm = projects[proj_name].setdefault("models", {})
+            if tok_sum > 0:
+                pm_entry = pm.setdefault(model, {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0})
+                pm_entry["input"] += inp
+                pm_entry["output"] += out
+                pm_entry["cache_read"] += cache_read
+                pm_entry["cache_create"] += cache_create
+
+            # Tools
+            for tool_name, count in tool_calls_in_session.items():
+                ts_entry = tools_stats.setdefault(tool_name, {"calls": 0, "sessions": set()})
+                ts_entry["calls"] += count
+                ts_entry["sessions"].add(session_id)
+
+            total_sessions.add(session_id)
+
+        except Exception as e:
+            continue
+
+    # Convert sets to counts
+    for d in daily.values():
+        d["sessions"] = len(d.pop("sessions", set()))
+    for p in projects.values():
+        p["sessions"] = len(p.pop("sessions", set()))
+    for ts_entry in tools_stats.values():
+        ts_entry["sessions"] = len(ts_entry.pop("sessions", set()))
+
+    elapsed = time.time() - t0
+    print(f"  [Codex Scanner] 扫描完成: {file_count} 文件, {total_messages} 消息, "
+          f"{len(total_sessions)} 会话, {total_tokens} tokens ({elapsed:.1f}s)")
+
+    total_input = sum(m["input"] for m in models.values())
+    total_output = sum(m["output"] for m in models.values())
+    total_cache_read = sum(m["cache_read"] for m in models.values())
+    total_cache_create = sum(m["cache_create"] for m in models.values())
+
+    result = {
+        "daily": daily,
+        "models": models,
+        "projects": projects,
+        "tools_stats": tools_stats,
+        "total_messages": total_messages,
+        "total_sessions": len(total_sessions),
+        "total_tokens": total_tokens,
+        "total_input": total_input,
+        "total_output": total_output,
+        "total_cache_read": total_cache_read,
+        "total_cache_create": total_cache_create,
+        "source": "codex",
+    }
+
+    with _codex_lock:
+        _codex_cache["data"] = result
+        _codex_cache["time"] = time.time()
+
+    return result
+
+
+def _merge_codex_into_scan(claude_scan, codex_scan):
+    """Merge Codex scan data into Claude scan data"""
+    if not codex_scan:
+        return claude_scan
+
+    result = dict(claude_scan)
+
+    # Merge totals
+    result["total_messages"] += codex_scan.get("total_messages", 0)
+    result["total_sessions"] += codex_scan.get("total_sessions", 0)
+    result["total_tokens"] += codex_scan.get("total_tokens", 0)
+    result["total_input"] = result.get("total_input", 0) + codex_scan.get("total_input", 0)
+    result["total_output"] = result.get("total_output", 0) + codex_scan.get("total_output", 0)
+    result["total_cache_read"] = result.get("total_cache_read", 0) + codex_scan.get("total_cache_read", 0)
+    result["total_cache_create"] = result.get("total_cache_create", 0) + codex_scan.get("total_cache_create", 0)
+
+    # Merge models
+    merged_models = dict(result.get("models", {}))
+    for model, v in codex_scan.get("models", {}).items():
+        if model not in merged_models:
+            merged_models[model] = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "calls": 0}
+        for k in ("input", "output", "cache_read", "cache_create", "calls"):
+            merged_models[model][k] += v.get(k, 0)
+        if "context_window" in v:
+            merged_models[model]["context_window"] = v["context_window"]
+    result["models"] = merged_models
+
+    # Merge daily
+    merged_daily = dict(result.get("daily", {}))
+    for date, d in codex_scan.get("daily", {}).items():
+        if date not in merged_daily:
+            merged_daily[date] = {"messages": 0, "sessions": 0, "tools": 0, "tokens": {}}
+        merged_daily[date]["messages"] += d.get("messages", 0)
+        merged_daily[date]["sessions"] += d.get("sessions", 0)
+        merged_daily[date]["tools"] += d.get("tools", 0)
+        for model, tdata in d.get("tokens", {}).items():
+            t_model = merged_daily[date].setdefault("tokens", {}).setdefault(model, {
+                "input": 0, "output": 0, "cache_read": 0, "cache_create": 0
+            })
+            for k in ("input", "output", "cache_read", "cache_create"):
+                t_model[k] += tdata.get(k, 0)
+    result["daily"] = merged_daily
+
+    # Merge projects (keep codex projects separate with source tag)
+    merged_projects = dict(result.get("projects", {}))
+    for proj_name, p in codex_scan.get("projects", {}).items():
+        key = "codex:" + proj_name
+        merged_projects[key] = dict(p)
+        merged_projects[key]["source"] = "codex"
+    result["projects"] = merged_projects
+
+    # Merge tools
+    merged_tools = dict(result.get("tools_stats", {}))
+    for tool_name, t in codex_scan.get("tools_stats", {}).items():
+        if tool_name not in merged_tools:
+            merged_tools[tool_name] = {"calls": 0, "sessions": 0}
+        merged_tools[tool_name]["calls"] += t.get("calls", 0)
+        merged_tools[tool_name]["sessions"] += t.get("sessions", 0)
+    result["tools_stats"] = merged_tools
+
+    # Recalculate cache hit rate
+    total_all_input = result["total_input"] + result["total_cache_read"] + result["total_cache_create"]
+    result["cache_hit_rate"] = round(result["total_cache_read"] / total_all_input * 100, 1) if total_all_input > 0 else 0
+
+    return result
+
+
+def _find_codex_session_file(session_id):
+    """Find a Codex session JSONL file by session ID"""
+    for search_dir in [CODEX_SESSIONS_DIR, CODEX_ARCHIVED_DIR]:
+        if not search_dir.exists():
+            continue
+        for jsonl_file in search_dir.rglob("rollout-*.jsonl"):
+            # Check if session_id appears in filename
+            if session_id in jsonl_file.name:
+                return jsonl_file
+            # Check inside file
+            try:
+                with open(jsonl_file, "r", encoding="utf-8", errors="replace") as f:
+                    for i, line in enumerate(f):
+                        if i > 5:
+                            break
+                        line = line.strip()
+                        if not line:
+                            continue
+                        evt = json.loads(line)
+                        if evt.get("type") == "session_meta":
+                            if evt.get("payload", {}).get("id") == session_id:
+                                return jsonl_file
+            except Exception:
+                continue
+    return None
+
+
+def _parse_codex_session(jsonl_path):
+    """Parse a Codex session JSONL file into the same event timeline format as Claude"""
+    events_out = []
+    models_seen = set()
+    tools_summary = {}
+    total_cost = 0.0
+    total_input = 0
+    total_output = 0
+    total_cache_read = 0
+    total_cache_create = 0
+    msg_count = 0
+    first_ts = None
+    last_ts = None
+    session_id = ""
+    model = _read_codex_model()
+
+    try:
+        raw_events = []
+        with open(jsonl_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    raw_events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+
+        last_token_usage = None
+
+        for evt in raw_events:
+            evt_type = evt.get("type", "")
+            ts = evt.get("timestamp", "")
+
+            if ts:
+                if first_ts is None:
+                    first_ts = ts
+                last_ts = ts
+
+            if evt_type == "session_meta":
+                session_id = evt.get("payload", {}).get("id", "")
+
+            elif evt_type == "turn_context":
+                m = evt.get("payload", {}).get("model", "")
+                if m:
+                    model = m
+                    models_seen.add(m)
+
+            elif evt_type == "event_msg":
+                payload = evt.get("payload", {})
+                sub_type = payload.get("type", "")
+
+                if sub_type == "user_message":
+                    msg_count += 1
+                    content = payload.get("message", "")
+                    events_out.append({
+                        "type": "user",
+                        "timestamp": ts,
+                        "content": (content or "")[:500],
+                    })
+
+                elif sub_type == "token_count":
+                    info = payload.get("info")
+                    if info and isinstance(info, dict):
+                        tu = info.get("total_token_usage")
+                        if tu:
+                            last_token_usage = tu
+
+            elif evt_type == "response_item":
+                payload = evt.get("payload", {})
+                if payload.get("type") == "message":
+                    # Assistant message
+                    content_blocks = payload.get("content", [])
+                    text_parts = []
+                    if isinstance(content_blocks, list):
+                        for block in content_blocks:
+                            if isinstance(block, dict) and block.get("type") == "output_text":
+                                text_parts.append(block.get("text", ""))
+                    content_text = " ".join(text_parts)[:500]
+                    if content_text.strip():
+                        events_out.append({
+                            "type": "assistant",
+                            "timestamp": ts,
+                            "content": content_text,
+                            "model": model,
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                            "cost_usd": 0,
+                            "tools_used": [],
+                        })
+
+                elif payload.get("type") == "function_call":
+                    tool_name = payload.get("name", "unknown")
+                    tools_summary[tool_name] = tools_summary.get(tool_name, 0) + 1
+                    events_out.append({
+                        "type": "assistant",
+                        "timestamp": ts,
+                        "content": "",
+                        "model": model,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cost_usd": 0,
+                        "tools_used": [tool_name],
+                    })
+
+        # Apply cumulative token usage from last token_count
+        if last_token_usage:
+            total_input = last_token_usage.get("input_tokens", 0) or 0
+            total_cache_read = last_token_usage.get("cached_input_tokens", 0) or 0
+            total_output = last_token_usage.get("output_tokens", 0) or 0
+            total_cost = _calc_cost(model, total_input, total_output, total_cache_read, 0)
+
+    except Exception as e:
+        return {"error": str(e)}
+
+    duration_ms = 0
+    if first_ts and last_ts:
+        dt_first = parse_iso_ts(first_ts)
+        dt_last = parse_iso_ts(last_ts)
+        if dt_first and dt_last:
+            duration_ms = int((dt_last - dt_first).total_seconds() * 1000)
+
+    return {
+        "session_id": session_id or jsonl_path.stem,
+        "events": events_out,
+        "source": "codex",
+        "stats": {
+            "messages": msg_count,
+            "duration_ms": duration_ms,
+            "total_cost": round(total_cost, 4),
+            "total_input": total_input,
+            "total_output": total_output,
+            "total_cache_read": total_cache_read,
+            "total_cache_create": total_cache_create,
+            "models": list(models_seen) if models_seen else [model],
+            "tools_summary": tools_summary,
+            "files_touched": {},
+        }
+    }
+
+
+# ============================================================
 # History 解析
 # ============================================================
 def _load_history():
@@ -637,6 +1222,100 @@ def _scan_today():
     _live_cache["data"] = result
     _live_cache["time"] = time.time()
     return result
+
+
+def _scan_codex_today():
+    """Scan today's Codex session files for live view"""
+    if not _codex_enabled():
+        return None
+
+    today = datetime.date.today()
+    today_str = today.isoformat()
+    calls = []
+    totals = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "calls": 0, "cost": 0}
+    default_model = _read_codex_model()
+
+    for search_dir in [CODEX_SESSIONS_DIR, CODEX_ARCHIVED_DIR]:
+        if not search_dir.exists():
+            continue
+        for jsonl_file in search_dir.rglob("rollout-*.jsonl"):
+            try:
+                mtime = datetime.date.fromtimestamp(jsonl_file.stat().st_mtime)
+                if mtime != today:
+                    continue
+            except Exception:
+                continue
+
+            try:
+                events = []
+                with open(jsonl_file, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            events.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+
+                model = default_model
+                cwd = ""
+                last_token_usage = None
+                first_ts = ""
+
+                for evt in events:
+                    ts = evt.get("timestamp", "")
+                    if ts and not first_ts:
+                        first_ts = ts
+
+                    if evt.get("type") == "session_meta":
+                        cwd = evt.get("payload", {}).get("cwd", "")
+                    elif evt.get("type") == "turn_context":
+                        m = evt.get("payload", {}).get("model", "")
+                        if m:
+                            model = m
+                    elif evt.get("type") == "event_msg":
+                        payload = evt.get("payload", {})
+                        if payload.get("type") == "token_count":
+                            info = payload.get("info")
+                            if info and isinstance(info, dict):
+                                tu = info.get("total_token_usage")
+                                if tu:
+                                    last_token_usage = tu
+
+                if not first_ts or not first_ts.startswith(today_str):
+                    continue
+
+                if last_token_usage:
+                    inp = last_token_usage.get("input_tokens", 0) or 0
+                    out = last_token_usage.get("output_tokens", 0) or 0
+                    cr = last_token_usage.get("cached_input_tokens", 0) or 0
+                    if inp == 0 and out == 0:
+                        continue
+
+                    proj_friendly = cwd.rstrip("/").split("/")[-1] if cwd else "codex"
+                    row_cost = round(_calc_cost(model, inp, out, cr, 0), 6)
+                    calls.append({
+                        "timestamp": first_ts,
+                        "model": model,
+                        "project": proj_friendly + " (codex)",
+                        "input_tokens": inp,
+                        "output_tokens": out,
+                        "cache_read": cr,
+                        "cache_create": 0,
+                        "cost_usd": row_cost,
+                        "source": "codex",
+                    })
+                    totals["input"] += inp
+                    totals["output"] += out
+                    totals["cache_read"] += cr
+                    totals["calls"] += 1
+                    totals["cost"] += row_cost
+            except Exception:
+                continue
+
+    calls.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return {"calls": calls, "totals": totals} if calls else None
 
 
 # ============================================================
@@ -788,6 +1467,109 @@ def _scan_all_logs(force=False):
     calls.sort(key=lambda x: x["timestamp"], reverse=True)
     _logs_cache["data"] = calls
     _logs_cache["time"] = time.time()
+    return calls
+
+
+# _codex_logs_cache defined near top with other caches
+CODEX_LOGS_TTL = 30
+
+
+def _scan_codex_logs():
+    """Scan Codex session files to produce log entries matching Claude format"""
+    now = time.time()
+    if _codex_logs_cache["data"] is not None and (now - _codex_logs_cache["time"]) < CODEX_LOGS_TTL:
+        return _codex_logs_cache["data"]
+
+    if not _codex_enabled():
+        return []
+
+    calls = []
+    default_model = _read_codex_model()
+
+    for search_dir in [CODEX_SESSIONS_DIR, CODEX_ARCHIVED_DIR]:
+        if not search_dir.exists():
+            continue
+        for jsonl_file in search_dir.rglob("rollout-*.jsonl"):
+            try:
+                events = []
+                with open(jsonl_file, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            events.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+
+                model = default_model
+                cwd = ""
+                first_ts = ""
+                last_ts = ""
+                last_token_usage = None
+
+                for evt in events:
+                    ts = evt.get("timestamp", "")
+                    if ts:
+                        if not first_ts:
+                            first_ts = ts
+                        last_ts = ts
+
+                    if evt.get("type") == "session_meta":
+                        cwd = evt.get("payload", {}).get("cwd", "")
+                    elif evt.get("type") == "turn_context":
+                        m = evt.get("payload", {}).get("model", "")
+                        if m:
+                            model = m
+                    elif evt.get("type") == "event_msg":
+                        payload = evt.get("payload", {})
+                        if payload.get("type") == "token_count":
+                            info = payload.get("info")
+                            if info and isinstance(info, dict):
+                                tu = info.get("total_token_usage")
+                                if tu:
+                                    last_token_usage = tu
+
+                if not last_token_usage:
+                    continue
+
+                inp = last_token_usage.get("input_tokens", 0) or 0
+                out = last_token_usage.get("output_tokens", 0) or 0
+                cr = last_token_usage.get("cached_input_tokens", 0) or 0
+                if inp == 0 and out == 0:
+                    continue
+
+                proj_friendly = cwd.rstrip("/").split("/")[-1] if cwd else "codex"
+                row_cost = round(_calc_cost(model, inp, out, cr, 0), 6)
+
+                # Duration from first to last timestamp
+                duration_ms = None
+                if first_ts and last_ts:
+                    t1 = _parse_iso(first_ts)
+                    t2 = _parse_iso(last_ts)
+                    if t1 and t2:
+                        duration_ms = int((t2 - t1).total_seconds() * 1000)
+
+                calls.append({
+                    "timestamp": first_ts,
+                    "model": model,
+                    "project": proj_friendly + " (codex)",
+                    "input_tokens": inp,
+                    "output_tokens": out,
+                    "cache_read": cr,
+                    "cache_create": 0,
+                    "status": 200,
+                    "ttft_ms": None,
+                    "duration_ms": duration_ms,
+                    "cost_usd": row_cost,
+                    "source": "codex",
+                })
+            except Exception:
+                continue
+
+    calls.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    _codex_logs_cache["data"] = calls
+    _codex_logs_cache["time"] = time.time()
     return calls
 
 
@@ -965,11 +1747,39 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_json(data)
 
     def api_overview(self, params):
-        """概览卡片（聚合本地 + 远程）"""
+        """概览卡片（聚合本地 + 远程 + Codex）"""
         force = "refresh" in params
+        source = params.get("source", ["all"])[0]
         if force:
             _clear_all_caches()
-        scan = _scan_all_projects(force=force)
+        if source == "codex":
+            # Use only Codex data
+            codex_scan = _scan_codex(force=force)
+            if codex_scan:
+                scan = codex_scan
+            else:
+                scan = {"daily": {}, "models": {}, "projects": {}, "tools_stats": {},
+                        "total_messages": 0, "total_sessions": 0, "total_tokens": 0,
+                        "total_input": 0, "total_output": 0, "total_cache_read": 0,
+                        "total_cache_create": 0, "cache_hit_rate": 0}
+            scan.setdefault("projects", {})
+            scan.setdefault("models", {})
+            scan.setdefault("daily", {})
+            scan.setdefault("tools_stats", {})
+            # Compute cache_hit_rate if missing
+            if "cache_hit_rate" not in scan:
+                ti = scan.get("total_input", 0)
+                tcr = scan.get("total_cache_read", 0)
+                tcc = scan.get("total_cache_create", 0)
+                tai = ti + tcr + tcc
+                scan["cache_hit_rate"] = round(tcr / tai * 100, 1) if tai > 0 else 0
+        else:
+            scan = _scan_all_projects(force=force)
+            # Merge Codex data (unless source=claude)
+            if source != "claude":
+                codex_scan = _scan_codex(force=force)
+                if codex_scan:
+                    scan = _merge_codex_into_scan(scan, codex_scan)
         today_str = datetime.date.today().isoformat()
         today_data = scan["daily"].get(today_str, {})
 
@@ -1082,7 +1892,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def api_daily(self, params):
         """每日趋势"""
         days = int(params.get("days", ["30"])[0])
-        scan = _scan_all_projects()
+        source = params.get("source", ["all"])[0]
+        if source == "codex":
+            codex_scan = _scan_codex()
+            scan = codex_scan if codex_scan else {"daily": {}, "models": {}}
+            scan.setdefault("daily", {})
+            scan.setdefault("models", {})
+        else:
+            scan = _scan_all_projects()
+            if source != "claude":
+                codex_scan = _scan_codex()
+                if codex_scan:
+                    scan = _merge_codex_into_scan(scan, codex_scan)
         daily = scan["daily"]
 
         # 按日期排序，取最近 N 天
@@ -1186,8 +2007,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_json({"activity": activity, "tokens": tokens, "weekly_comparison": weekly_comparison, "daily_comparison": daily_comparison})
 
     def api_models(self, params):
-        """模型用量明细（聚合远程）"""
-        scan = _scan_all_projects()
+        """模型用量明细（聚合远程 + Codex）"""
+        source = params.get("source", ["all"])[0]
+        if source == "codex":
+            codex_scan = _scan_codex()
+            scan = codex_scan if codex_scan else {"models": {}}
+            scan.setdefault("models", {})
+        else:
+            scan = _scan_all_projects()
+            if source != "claude":
+                codex_scan = _scan_codex()
+                if codex_scan:
+                    scan = _merge_codex_into_scan(scan, codex_scan)
         models = scan["models"]
         remotes = _get_active_remotes()
         remote_models = [_fetch_remote_cached(r["url"], "/api/models", r.get("token")) for r in remotes]
@@ -1199,7 +2030,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 m_data.get("cache_read", 0), m_data.get("cache_create", 0)
             ), 4)
             # Context window usage
-            ctx_win = CONTEXT_WINDOWS.get(m_name, DEFAULT_CONTEXT_WINDOW)
+            # Check hardcoded → LiteLLM → default
+            ctx_win = CONTEXT_WINDOWS.get(m_name)
+            if not ctx_win:
+                lp = _get_model_pricing(m_name)
+                ctx_win = lp.get("context_window", DEFAULT_CONTEXT_WINDOW) or DEFAULT_CONTEXT_WINDOW
             m_data["context_window"] = ctx_win
             calls = m_data.get("calls", 0)
             if calls > 0:
@@ -1212,8 +2047,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_json({"models": models})
 
     def api_projects(self, params):
-        """项目用量分布"""
-        scan = _scan_all_projects()
+        """项目用量分布（含 Codex）"""
+        source = params.get("source", ["all"])[0]
+        if source == "codex":
+            codex_scan = _scan_codex()
+            scan = codex_scan if codex_scan else {"projects": {}, "models": {}}
+            scan.setdefault("projects", {})
+            scan.setdefault("models", {})
+        else:
+            scan = _scan_all_projects()
+            if source != "claude":
+                codex_scan = _scan_codex()
+                if codex_scan:
+                    scan = _merge_codex_into_scan(scan, codex_scan)
         # 按 token 总量排序
         sorted_projects = sorted(
             scan["projects"].items(),
@@ -1237,6 +2083,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "sessions": info["sessions"],
                 "tokens_total": info["tokens_total"],
                 "cost_usd": round(proj_cost, 4),
+                "source": info.get("source", "claude"),
             })
         # 聚合远程
         remotes = _get_active_remotes()
@@ -1326,6 +2173,61 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     s["projectShort"] = s.get("projectShort", "?") + f" ({rname})"
                     unique_sessions.append(s)
 
+        # Merge Codex sessions
+        if _codex_enabled():
+            try:
+                # Read Codex history.jsonl
+                codex_hist = CODEX_DIR / "history.jsonl"
+                codex_index = CODEX_DIR / "session_index.jsonl"
+                # Build index of thread names
+                thread_names = {}
+                if codex_index.exists():
+                    with open(codex_index, "r", encoding="utf-8", errors="replace") as f:
+                        for line in f:
+                            try:
+                                e = json.loads(line.strip())
+                                thread_names[e.get("id", "")] = e.get("thread_name", "")
+                            except: pass
+                # Read history for session list
+                codex_sessions = {}
+                if codex_hist.exists():
+                    with open(codex_hist, "r", encoding="utf-8", errors="replace") as f:
+                        for line in f:
+                            try:
+                                e = json.loads(line.strip())
+                                sid = e.get("session_id", "")
+                                if not sid or sid in seen: continue
+                                ts_sec = e.get("ts", 0)
+                                if sid not in codex_sessions:
+                                    codex_sessions[sid] = {
+                                        "sessionId": sid,
+                                        "timestamp": ts_sec * 1000,
+                                        "project": "Codex CLI",
+                                        "projectShort": "Codex CLI",
+                                        "firstPrompt": e.get("text", "")[:100],
+                                        "source": "codex",
+                                    }
+                            except: pass
+                # Also add sessions from index that might not be in history
+                for sid, name in thread_names.items():
+                    if sid not in seen and sid not in codex_sessions:
+                        codex_sessions[sid] = {
+                            "sessionId": sid,
+                            "timestamp": 0,
+                            "project": "Codex CLI",
+                            "projectShort": "Codex CLI",
+                            "firstPrompt": name[:100],
+                            "source": "codex",
+                        }
+                for s in codex_sessions.values():
+                    # Use thread_name if available
+                    if s["sessionId"] in thread_names and not s["firstPrompt"]:
+                        s["firstPrompt"] = thread_names[s["sessionId"]][:100]
+                    unique_sessions.append(s)
+                    seen.add(s["sessionId"])
+            except Exception:
+                pass
+
         # Re-sort by timestamp after merge
         unique_sessions.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
         unique_sessions = unique_sessions[:limit]
@@ -1377,6 +2279,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         break
 
         if not jsonl_path:
+            # Try Codex sessions
+            codex_path = _find_codex_session_file(session_id)
+            if codex_path:
+                result = _parse_codex_session(codex_path)
+                self.send_json(result)
+                return
             # Try remote
             for r in _get_active_remotes():
                 rd = _fetch_remote(r["url"].rstrip("/") + f"/api/session-detail?id={session_id}", r.get("token"), timeout=15)
@@ -1574,8 +2482,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_json({"heatmap": heatmap})
 
     def api_live(self, params):
-        """今日实时调用（聚合远程）"""
-        data = _scan_today()
+        """今日实时调用（聚合远程 + Codex）"""
+        source = params.get("source", ["all"])[0]
+        if source == "codex":
+            # Only Codex live data
+            codex_today = _scan_codex_today()
+            data = codex_today if codex_today else {"calls": [], "totals": {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "calls": 0, "cost": 0}}
+        else:
+            data = _scan_today()
+            # Merge Codex today data (unless source=claude)
+            if source != "claude":
+                codex_today = _scan_codex_today()
+                if codex_today:
+                    data["calls"] = data.get("calls", []) + codex_today.get("calls", [])
+                    data["calls"].sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+                    for k in ("input", "output", "cache_read", "cache_create", "calls"):
+                        data["totals"][k] = data["totals"].get(k, 0) + codex_today.get("totals", {}).get(k, 0)
+                    data["totals"]["cost"] = data["totals"].get("cost", 0) + codex_today.get("totals", {}).get("cost", 0)
         remotes = _get_active_remotes()
         remote_live = [_fetch_remote_cached(r["url"], "/api/live", r.get("token")) for r in remotes]
         remote_live = [rd for rd in remote_live if rd]
@@ -1584,15 +2507,24 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_json(data)
 
     def api_logs(self, params):
-        """带过滤与分页的用量日志（聚合远程）"""
+        """带过滤与分页的用量日志（聚合远程 + Codex）"""
         limit = int(params.get("limit", ["50"])[0])
         offset = int(params.get("offset", ["0"])[0])
         model_filter = params.get("model", [""])[0]
         project_filter = params.get("project", [""])[0]
         start = params.get("start", [""])[0]
         end = params.get("end", [""])[0]
+        source = params.get("source", ["all"])[0]
 
-        all_logs = list(_scan_all_logs())  # copy to avoid mutating cache
+        if source == "codex":
+            all_logs = list(_scan_codex_logs() or [])
+        else:
+            all_logs = list(_scan_all_logs())  # copy to avoid mutating cache
+            # Merge Codex logs (unless source=claude)
+            if source != "claude":
+                codex_logs = _scan_codex_logs()
+                if codex_logs:
+                    all_logs.extend(codex_logs)
 
         # Merge remote logs
         for r in _get_active_remotes():
@@ -1630,8 +2562,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 
     def api_tools(self, params):
-        """Tool usage statistics"""
+        """Tool usage statistics (Claude + Codex)"""
         scan = _scan_all_projects()
+        codex_scan = _scan_codex()
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
         tools = scan.get("tools_stats", {})
         total_calls = sum(t.get("calls", 0) for t in tools.values())
         self.send_json({
@@ -1723,6 +2658,96 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     break
 
         if not target_dir:
+            # Try Codex sessions — group by cwd
+            codex_path = _find_codex_session_file(session_id)
+            if codex_path:
+                # Find the cwd of this session
+                target_cwd = None
+                try:
+                    with open(codex_path, "r", encoding="utf-8", errors="replace") as f:
+                        for line in f:
+                            try:
+                                evt = json.loads(line.strip())
+                                if evt.get("type") == "session_meta":
+                                    target_cwd = evt["payload"].get("cwd", "")
+                                    break
+                            except: pass
+                except: pass
+
+                # Scan all Codex sessions with same cwd
+                chain = []
+                all_codex_files = []
+                for d in [CODEX_SESSIONS_DIR, CODEX_ARCHIVED_DIR]:
+                    if d.exists():
+                        all_codex_files.extend(d.rglob("rollout-*.jsonl"))
+
+                codex_model = _read_codex_model()
+
+                for jf in all_codex_files:
+                    try:
+                        sid = cwd = first_ts = last_ts = last_prompt = model = ""
+                        msg_count = total_cost = 0.0
+                        last_usage = None
+                        with open(jf, "r", encoding="utf-8", errors="replace") as f:
+                            for line in f:
+                                try:
+                                    evt = json.loads(line.strip())
+                                except: continue
+                                ts = evt.get("timestamp", "")
+                                if ts and not first_ts: first_ts = ts
+                                if ts: last_ts = ts
+                                etype = evt.get("type", "")
+                                payload = evt.get("payload", {})
+                                if not isinstance(payload, dict): continue
+                                if etype == "session_meta":
+                                    sid = payload.get("id", jf.stem)
+                                    cwd = payload.get("cwd", "")
+                                elif etype == "turn_context":
+                                    m = payload.get("model", "")
+                                    if m: model = m
+                                elif etype == "event_msg":
+                                    if payload.get("type") == "user_message":
+                                        msg_count += 1
+                                        msg = payload.get("message", "").lstrip("-\n \t").strip()
+                                        if msg: last_prompt = msg[:80]
+                                    elif payload.get("type") == "token_count":
+                                        info = payload.get("info")
+                                        if isinstance(info, dict):
+                                            last_usage = info.get("total_token_usage", {})
+
+                        if not sid: sid = jf.stem
+                        if not model: model = codex_model
+                        if target_cwd and cwd != target_cwd: continue
+
+                        u = last_usage or {}
+                        inp = u.get("input_tokens", 0) or 0
+                        out = u.get("output_tokens", 0) or 0
+                        cr = u.get("cached_input_tokens", 0) or 0
+                        total_cost = _calc_cost(model, inp, out, cr, 0)
+
+                        dur_str = ""
+                        if first_ts and last_ts:
+                            try:
+                                t1 = parse_iso_ts(first_ts)
+                                t2 = parse_iso_ts(last_ts)
+                                if t1 and t2:
+                                    secs = int((t2-t1).total_seconds())
+                                    dur_str = f"{secs//3600}h{(secs%3600)//60}m" if secs>=3600 else f"{secs//60}m" if secs>=60 else f"{secs}s"
+                            except: pass
+
+                        chain.append({
+                            "session_id": sid, "first_ts": first_ts, "last_ts": last_ts,
+                            "messages": msg_count, "cost_usd": round(total_cost, 4),
+                            "model": model, "last_prompt": last_prompt, "duration": dur_str,
+                            "is_current": sid == session_id,
+                        })
+                    except: continue
+
+                chain.sort(key=lambda x: x.get("last_ts") or "0", reverse=True)
+                for i, s in enumerate(chain): s["index"] = i + 1
+                proj_name = target_cwd.rstrip("/").split("/")[-1] if target_cwd else "Codex"
+                self.send_json({"chain": chain[:30], "total": len(chain), "project": proj_name + " (Codex)"})
+                return
             # Try remote (no cache, longer timeout for large sessions)
             for r in _get_active_remotes():
                 rd = _fetch_remote(r["url"].rstrip("/") + f"/api/session-chain?id={session_id}", r.get("token"), timeout=15)
@@ -1901,7 +2926,25 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # Collect detected models from scan cache
         scan = _scan_all_projects()
+        codex_scan = _scan_codex()
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
         detected_models = sorted(scan.get("models", {}).keys())
+
+        # Data sources status
+        data_sources = {
+            "claude_code": {
+                "enabled": True,
+                "detected": PROJECTS_DIR.exists(),
+                "path": str(CLAUDE_DIR),
+            },
+            "codex_cli": {
+                "enabled": _codex_enabled(),
+                "detected": CODEX_SESSIONS_DIR.exists() or CODEX_ARCHIVED_DIR.exists(),
+                "path": str(CODEX_DIR),
+                "model": _read_codex_model() if _codex_enabled() else "",
+            },
+        }
 
         self.send_json({
             "remotes": config.get("remotes", []),
@@ -1909,6 +2952,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "claude_org_id": _mask(config.get("claude_org_id", "")),
             "custom_pricing": config.get("custom_pricing", {}),
             "detected_models": detected_models,
+            "data_sources": data_sources,
         })
 
     def api_settings_post(self, data):
@@ -1946,6 +2990,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def api_rhythm(self, params):
         """编码节奏 + 工作模式分析"""
         scan = _scan_all_projects()
+        codex_scan = _scan_codex()
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
 
         # 1. Coding rhythm: from hourly heatmap aggregate by time period
         history = _load_history()
@@ -1980,12 +3027,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         families = {}
         for m, v in models.items():
             total_tok = v.get("input", 0) + v.get("output", 0) + v.get("cache_read", 0) + v.get("cache_create", 0)
-            if "opus" in m.lower():
+            ml = m.lower()
+            if "opus" in ml:
                 families["Opus"] = families.get("Opus", 0) + total_tok
-            elif "sonnet" in m.lower():
+            elif "sonnet" in ml:
                 families["Sonnet"] = families.get("Sonnet", 0) + total_tok
-            elif "haiku" in m.lower():
+            elif "haiku" in ml:
                 families["Haiku"] = families.get("Haiku", 0) + total_tok
+            elif "gpt" in ml or "codex" in ml:
+                families["GPT/Codex"] = families.get("GPT/Codex", 0) + total_tok
             else:
                 families["Other"] = families.get("Other", 0) + total_tok
 
@@ -2039,6 +3089,14 @@ def main():
     else:
         print("  ⚠ 历史记录不存在")
 
+    # Codex CLI detection
+    if CODEX_SESSIONS_DIR.exists() or CODEX_ARCHIVED_DIR.exists():
+        codex_files = list(CODEX_SESSIONS_DIR.rglob("rollout-*.jsonl")) if CODEX_SESSIONS_DIR.exists() else []
+        codex_files += list(CODEX_ARCHIVED_DIR.rglob("rollout-*.jsonl")) if CODEX_ARCHIVED_DIR.exists() else []
+        print(f"  ✅ Codex CLI: {len(codex_files)} 会话文件 (model: {_read_codex_model()})")
+    else:
+        print("  ⚠ Codex CLI 数据目录不存在")
+
     print()
     print(f"  🌐 Dashboard: http://localhost:{PORT}")
     print(f"  按 Ctrl+C 停止")
@@ -2046,6 +3104,8 @@ def main():
 
     # 后台预扫描
     threading.Thread(target=_scan_all_projects, daemon=True).start()
+    if _codex_enabled():
+        threading.Thread(target=_scan_codex, daemon=True).start()
 
     server = ThreadedHTTPServer(("127.0.0.1", PORT), DashboardHandler)
     try:

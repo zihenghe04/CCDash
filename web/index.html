@@ -84,9 +84,16 @@
 
   <!-- PAGE: Overview -->
   <div class="page active" id="page-overview">
+    <!-- Data source tabs (auto-hidden if only one source) -->
+    <div class="source-tabs" id="sourceTabs" style="display:none;margin-bottom:12px">
+      <button class="pill on" data-source="all" onclick="switchSource('all')">All</button>
+      <button class="pill" data-source="claude" onclick="switchSource('claude')"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;margin-right:4px"></span>Claude Code</button>
+      <button class="pill" data-source="codex" onclick="switchSource('codex')"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;margin-right:4px"></span>Codex CLI</button>
+    </div>
+
     <!-- Gauge + Status row -->
-    <div class="overview-top">
-      <div class="gauge-card card">
+    <div class="overview-top" id="overviewTop">
+      <div class="gauge-card card" id="gaugeCard">
         <div class="gauge-wrap">
           <!-- 5h HUD Gauge -->
           <div class="hud-gauge" id="hud5h">
@@ -331,6 +338,12 @@
       </div>
       <div id="pricingTable" style="margin-top:16px"></div>
       <button class="btn btn-accent" onclick="savePricing()" style="margin-top:12px"><i class="ph ph-floppy-disk"></i> <span data-i="savePricing">Save Pricing</span></button>
+    </div>
+
+    <div class="card sec" style="max-width:800px;margin-top:16px">
+      <div class="sec-title"><i class="ph ph-plugs"></i> <span data-i="dataSources">Data Sources</span></div>
+      <div class="sec-desc" data-i="dataSourcesDesc">Detected CLI tool data</div>
+      <div id="dataSourcesList" style="margin-top:12px"></div>
     </div>
 
     <div class="card sec" style="max-width:800px;margin-top:16px">

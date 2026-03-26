@@ -4,6 +4,58 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.4.0] — 2026-03-26
+
+### 🚀 Multi-CLI Support: Codex CLI Integration
+
+#### Codex CLI Data Adapter
+- **Automatic detection** of `~/.codex/` data — no configuration needed
+- **Full session scanning** — reads `~/.codex/sessions/` (date-based dirs) and `~/.codex/archived_sessions/`
+- **Token extraction** from cumulative `token_count` events (input, cached_input, output, reasoning_output)
+- **Tool call tracking** from `function_call` response items
+- **User message extraction** from `user_message` events
+- **Session metadata** — cwd, model_provider, subagent parent relationships
+- **Session chain by cwd** — groups Codex sessions sharing the same working directory
+- **Session detail** — full conversation timeline for Codex sessions (user/assistant/tool events)
+
+#### Dynamic Model Pricing (LiteLLM)
+- **2500+ models** priced automatically from [LiteLLM](https://github.com/BerriAI/litellm) open-source pricing data
+- **24-hour cache** — fetched once per day from GitHub, zero API key needed
+- **Pricing chain**: custom_pricing (user) → LiteLLM (2500 models) → MODEL_PRICING (hardcoded fallback) → DEFAULT_PRICING
+- **Official OpenAI pricing** updated: gpt-5.3-codex ($1.75/$14), gpt-5.4 ($2.50/$15), gpt-5.4-mini ($0.75/$4.50), gpt-4o ($2.50/$10)
+
+#### Data Source Switching
+- **Source tabs** on overview page — `All | Claude Code | Codex CLI` (auto-hidden if only one source)
+- **`?source=` parameter** on 6 API endpoints: overview, daily, models, projects, live, logs
+- **Per-source filtering** — switch to Claude-only or Codex-only view, all charts/tables/stats recalculate
+- **Gauge auto-hide** — 5H/7D subscription gauges hidden when viewing Codex-only data
+
+#### Remote Agent
+- **Codex scanning** added to `agent.py` — merges `~/.codex/` data on remote servers
+- **Codex model pricing** added to agent's pricing table
+- **Codex session chain** with cwd-based grouping
+
+### 🎨 UI
+- Source tabs with colored dots (green for Codex, accent for Claude)
+- "CDX" badges on Codex entries in live stream and logs
+- "CODEX" badges on Codex projects
+- Provider column shows "OpenAI" for GPT/Codex models
+- Data Sources section in Settings page showing detection status
+
+### 🔧 Backend
+- `_scan_codex()` — full Codex JSONL scanner with caching
+- `_merge_codex_into_scan()` — merges Codex data into Claude scan results
+- `_find_codex_session_file()` — locates rollout files by session ID
+- `_parse_codex_session()` — converts Codex JSONL to unified event timeline
+- `_scan_codex_today()` — today's Codex calls for live view
+- `_scan_codex_logs()` — all Codex log entries with caching
+- `_fetch_litellm_pricing()` — dynamic pricing with 24h cache
+- `_get_model_pricing()` — unified pricing lookup chain
+- `_read_codex_model()` — reads default model from `~/.codex/config.toml`
+- Background pre-scan thread for Codex data on startup
+
+---
+
 ## [0.3.1] — 2026-03-26
 
 ### 🚀 New Features

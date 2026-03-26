@@ -45,7 +45,10 @@ const I18N = {
     navSettings:'设置', apiConfig:'API 配置', apiConfigDesc:'Claude.ai Session Key 用于额度追踪',
     modelPricing:'模型定价', modelPricingDesc:'自定义非 Anthropic 模型的定价（每百万 Token）',
     addModel:'添加模型', savePricing:'保存定价', save:'保存',
-    detectedModels:'检测到的模型', detectedModelsDesc:'在使用数据中发现的模型'
+    detectedModels:'检测到的模型', detectedModelsDesc:'在使用数据中发现的模型',
+    dataSources:'数据源', dataSourcesDesc:'已检测到的 CLI 工具数据',
+    claudeCode:'Claude Code', codexCli:'Codex CLI',
+    sourceCodex:'Codex', sourceClaude:'Claude'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -85,7 +88,10 @@ const I18N = {
     navSettings:'Settings', apiConfig:'API Configuration', apiConfigDesc:'Claude.ai session key for quota tracking',
     modelPricing:'Model Pricing', modelPricingDesc:'Custom pricing for non-Anthropic models (per million tokens)',
     addModel:'Add Model', savePricing:'Save Pricing', save:'Save',
-    detectedModels:'Detected Models', detectedModelsDesc:'Models found in your usage data'
+    detectedModels:'Detected Models', detectedModelsDesc:'Models found in your usage data',
+    dataSources:'Data Sources', dataSourcesDesc:'Detected CLI tool data',
+    claudeCode:'Claude Code', codexCli:'Codex CLI',
+    sourceCodex:'Codex', sourceClaude:'Claude'
   }
 };
 let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
@@ -141,6 +147,32 @@ initTheme();
 
 /* ---- Privacy Mode ---- */
 let privacyMode = localStorage.getItem('claude_dash_privacy') === 'true';
+/* ---- Data Source Switching ---- */
+let activeSource = 'all';
+function switchSource(src) {
+  activeSource = src;
+  document.querySelectorAll('.source-tabs .pill').forEach(el => el.classList.toggle('on', el.dataset.source === src));
+  const gaugeCard = document.getElementById('gaugeCard');
+  const overviewTop = document.getElementById('overviewTop');
+  if (gaugeCard && overviewTop) {
+    if (src === 'codex') {
+      gaugeCard.style.display = 'none';
+      overviewTop.style.gridTemplateColumns = '1fr';
+    } else {
+      gaugeCard.style.display = '';
+      overviewTop.style.gridTemplateColumns = '';
+    }
+  }
+  // Reload all data with source filter
+  notyf.success(curLang==='zh' ? `数据源: ${src==='all'?'全部':src}` : `Source: ${src==='all'?'All':src}`);
+  refreshAll();
+}
+
+function sourceParam(prefix) {
+  if (!activeSource || activeSource === 'all') return '';
+  return (prefix || '&') + 'source=' + activeSource;
+}
+
 function togglePrivacy() {
   privacyMode = !privacyMode;
   localStorage.setItem('claude_dash_privacy', privacyMode);
@@ -198,7 +230,10 @@ const MC = {
   'claude-sonnet-4-6':'#60a5fa',
   'claude-sonnet-4-5':'#c084fc',
   'claude-sonnet-4-5-20250929':'#c084fc',
-  'claude-haiku-4-5-20251001':'#4ade80'
+  'claude-haiku-4-5-20251001':'#4ade80',
+  'gpt-5.3-codex':'#10b981',
+  'gpt-5.4':'#10b981',
+  'gpt-4o':'#10b981',
 };
 function mC(m) { return MC[m] || '#2dd4bf'; }
 function mS(m) { return m.replace('claude-','').replace(/-\d{8}$/,''); }
@@ -315,6 +350,34 @@ function updateGauge(pct) {
 async function loadStatus() {
   const d = await api('/api/status');
   if (!d) return;
+
+  // Detect data sources and adjust UI
+  const settings = await api('/api/settings');
+  if (settings && settings.data_sources) {
+    const ds = settings.data_sources;
+    const hasClaude = ds.claude_code && ds.claude_code.detected;
+    const hasCodex = ds.codex_cli && ds.codex_cli.detected;
+    const gaugeCard = document.getElementById('gaugeCard');
+    const sourceTabs = document.getElementById('sourceTabs');
+
+    // Show source tabs only if multiple sources
+    if (hasClaude && hasCodex && sourceTabs) {
+      sourceTabs.style.display = 'flex';
+    }
+
+    // Hide gauge card if no Claude subscription (no session key configured)
+    if (gaugeCard) {
+      const hasSessionKey = settings.claude_session_key && !settings.claude_session_key.includes('***') && settings.claude_session_key.length > 10;
+      // Only show gauges if Claude subscription is configured with session key
+      if (!hasClaude || !hasSessionKey) {
+        gaugeCard.style.display = 'none';
+        // Adjust grid to full width for today card
+        const overviewTop = document.getElementById('overviewTop');
+        if (overviewTop) overviewTop.style.gridTemplateColumns = '1fr';
+      }
+    }
+  }
+
   document.getElementById('pName').textContent = d.profile_name || '—';
   updateGauge(d.utilization || 0);
   document.getElementById('tMsg').textContent = d.today_messages;
@@ -375,7 +438,7 @@ async function loadStatus() {
 }
 
 async function loadOverview() {
-  const d = await api('/api/overview');
+  const d = await api('/api/overview' + sourceParam('?'));
   if (!d) return;
   animateValue('cMsg', fmtRaw(d.total_messages));
   animateValue('cSes', fmtRaw(d.total_sessions));
@@ -476,6 +539,12 @@ const MODEL_PRICING_JS = {
   'claude-sonnet-4-5-20250929':{input:3,output:15,cache_read:0.3,cache_create:3.75},
   'claude-sonnet-4-20250514':{input:3,output:15,cache_read:0.3,cache_create:3.75},
   'claude-haiku-4-5-20251001':{input:1,output:5,cache_read:0.1,cache_create:1.25},
+  'gpt-5.3-codex':{input:1.75,output:14,cache_read:0.175,cache_create:0},
+  'gpt-5.4':{input:2.5,output:15,cache_read:0.25,cache_create:0},
+  'gpt-5.4-mini':{input:0.75,output:4.5,cache_read:0.075,cache_create:0},
+  'gpt-5.2-codex':{input:1.75,output:14,cache_read:0.175,cache_create:0},
+  'gpt-4o':{input:2.5,output:10,cache_read:1.25,cache_create:0},
+  'gpt-4o-mini':{input:0.15,output:0.6,cache_read:0.075,cache_create:0},
 };
 const DEFAULT_PRICING_JS = {input:3,output:15,cache_read:0.3,cache_create:3.75};
 
@@ -558,7 +627,7 @@ async function loadCharts() {
   }
 
   const days = isMonthly ? 365 : (parseInt(curRange) || 30);
-  const d = await api('/api/daily?days=' + days);
+  const d = await api('/api/daily?days=' + days + sourceParam());
   if (!d) return;
   let activity = d.activity, tokens = d.tokens;
   if (isMonthly) {
@@ -697,7 +766,7 @@ function setRange(r) {
 }
 
 async function loadModels() {
-  const d = await api('/api/models');
+  const d = await api('/api/models' + sourceParam('?'));
   if (!d) return;
   const ms = Object.entries(d.models).sort((a,b) => {
     const ta = a[1].input+a[1].output+a[1].cache_read+a[1].cache_create;
@@ -727,13 +796,16 @@ async function loadModels() {
 }
 
 async function loadProjects() {
-  const d = await api('/api/projects');
+  const d = await api('/api/projects' + sourceParam('?'));
   if (!d) return;
   const tot = d.projects.reduce((s,p) => s+p.tokens_total, 0);
   document.getElementById('tbProj').innerHTML = d.projects.map(p => {
     const pc = tot > 0 ? (p.tokens_total/tot*100).toFixed(1) : 0;
     let sb = '', dn = p.name || '';
-    if (dn.includes('(local)')) {
+    if (p.source === 'codex') {
+      const lbl = curLang==='zh' ? 'Codex' : 'CODEX';
+      sb = `<span style="font:600 8px var(--font);padding:1px 6px;border-radius:4px;background:var(--green-bg,rgba(74,222,128,0.1));color:var(--green);margin-left:4px">${lbl}</span>`;
+    } else if (dn.includes('(local)')) {
       const lbl = curLang==='zh' ? '本地' : 'LOCAL';
       sb = `<span style="font:600 8px var(--font);padding:1px 6px;border-radius:4px;background:var(--accent-bg);color:var(--accent);margin-left:4px">${lbl}</span>`;
       dn = dn.replace(/\s*\(local\)/, '');
@@ -765,14 +837,18 @@ async function loadSess() {
 }
 
 async function loadLive() {
-  const d = await api('/api/live');
+  const d = await api('/api/live' + sourceParam('?'));
   if (!d) return;
   const badge = document.getElementById('liveBadge');
   if (badge) badge.textContent = d.calls.length;
   document.getElementById('liveN').textContent = d.calls.length + (curLang==='zh' ? ' 条' : ' calls');
   document.getElementById('tbLive').innerHTML = d.calls.slice(0,80).map(c => {
     const cost = c.cost_usd != null ? '$'+c.cost_usd.toFixed(4) : '—';
-    return `<tr><td>${fmtISO(c.timestamp)}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono" style="color:var(--green)">${cost}</td></tr>`;
+    let srcBadge = '';
+    if (c.source === 'codex' || (c.project||'').includes('(codex)')) {
+      srcBadge = '<span style="font:600 7px var(--font);padding:0 4px;border-radius:3px;background:var(--green-bg,rgba(74,222,128,0.1));color:var(--green);margin-left:3px">CDX</span>';
+    }
+    return `<tr><td>${fmtISO(c.timestamp)}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}${srcBadge}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono" style="color:var(--green)">${cost}</td></tr>`;
   }).join('');
   document.getElementById('lCalls').textContent = d.totals.calls;
   document.getElementById('lIn').textContent = fmt(d.totals.input);
@@ -825,6 +901,7 @@ async function loadLogs() {
   if (end) url += `&end=${encodeURIComponent(new Date(end).toISOString())}`;
   if (model) url += `&model=${encodeURIComponent(model)}`;
   if (project) url += `&project=${encodeURIComponent(project)}`;
+  url += sourceParam();
   const d = await api(url);
   if (!d) return;
   const tp = Math.ceil(d.total / logLimit) || 1;
@@ -836,7 +913,9 @@ async function loadLogs() {
     const tc = c.ttft_ms != null ? (c.ttft_ms < 3000 ? 'ttft-green' : c.ttft_ms < 10000 ? 'ttft-yellow' : 'ttft-red') : '';
     const dur = c.duration_ms != null ? (c.duration_ms < 1000 ? c.duration_ms+'ms' : c.duration_ms < 60000 ? (c.duration_ms/1000).toFixed(1)+'s' : (c.duration_ms/60000).toFixed(1)+'m') : '—';
     let cb = '';
-    if ((c.project||'').includes('(cloud)') || (c.project||'').includes('远程')) {
+    if (c.source === 'codex' || (c.project||'').includes('(codex)')) {
+      cb = `<span style="font:600 7px var(--font);padding:0 4px;border-radius:3px;background:var(--green-bg,rgba(74,222,128,0.1));color:var(--green);margin-left:3px">CDX</span>`;
+    } else if ((c.project||'').includes('(cloud)') || (c.project||'').includes('远程')) {
       const lbl = curLang==='zh' ? '云' : '☁';
       cb = `<span style="font:600 7px var(--font);padding:0 4px;border-radius:3px;background:var(--blue-bg);color:var(--blue);margin-left:3px">${lbl}</span>`;
     }
@@ -929,7 +1008,7 @@ async function loadRhythm() {
   const dna = document.getElementById('modelDNAChart');
   if (dna && d.model_dna) {
     const total = Object.values(d.model_dna).reduce((s,v)=>s+v,0) || 1;
-    const familyColors = {Opus:'#c084fc', Sonnet:'#60a5fa', Haiku:'#4ade80', Other:'#6b7280'};
+    const familyColors = {Opus:'#c084fc', Sonnet:'#60a5fa', Haiku:'#4ade80', 'GPT/Codex':'#10b981', Other:'#6b7280'};
     dna.innerHTML = `<div style="display:flex;height:28px;border-radius:14px;overflow:hidden;margin-bottom:14px">
         ${Object.entries(d.model_dna).map(([k,v]) => {const pct = (v/total*100).toFixed(1); return v > 0 ? `<div style="width:${pct}%;background:${familyColors[k]||'#6b7280'}" title="${k} ${pct}%"></div>` : '';}).join('')}
       </div>
@@ -1377,6 +1456,9 @@ async function loadSettings() {
 
   // Detected models list
   renderDetectedModels(d.detected_models || []);
+
+  // Data sources
+  renderDataSources(d.data_sources || {});
 }
 
 function renderPricingTable(pricing, detectedModels) {
@@ -1447,6 +1529,38 @@ function renderDetectedModels(models) {
   }).join('');
 }
 
+function renderDataSources(sources) {
+  const el = document.getElementById('dataSourcesList');
+  if (!el) return;
+  const t = I18N[curLang] || I18N.zh;
+  const items = [];
+  const srcInfo = {
+    claude_code: { name: t.claudeCode || 'Claude Code', icon: 'ph-terminal-window', color: 'var(--accent)' },
+    codex_cli: { name: t.codexCli || 'Codex CLI', icon: 'ph-code', color: 'var(--green)' },
+  };
+  for (const [key, src] of Object.entries(sources)) {
+    const info = srcInfo[key] || { name: key, icon: 'ph-plug', color: 'var(--text-2)' };
+    const detected = src.detected;
+    const enabled = src.enabled;
+    const statusDot = detected ? (enabled ? 'var(--green)' : 'var(--orange)') : 'var(--red)';
+    const statusText = detected ? (enabled ? (curLang==='zh'?'已启用':'Enabled') : (curLang==='zh'?'已禁用':'Disabled')) : (curLang==='zh'?'未检测到':'Not detected');
+    let detail = src.path || '';
+    if (src.model) detail += ` (${src.model})`;
+    items.push(`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin:6px 0;border-radius:8px;background:var(--bg-3);border:1px solid var(--border-l)">
+      <i class="ph ${info.icon}" style="font-size:18px;color:${info.color}"></i>
+      <div style="flex:1">
+        <div style="font:600 13px var(--font);color:var(--text-0)">${info.name}</div>
+        <div style="font:400 10px var(--mono);color:var(--text-2);margin-top:2px">${detail}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px">
+        <span style="width:7px;height:7px;border-radius:50%;background:${statusDot}"></span>
+        <span style="font:500 11px var(--font);color:var(--text-1)">${statusText}</span>
+      </div>
+    </div>`);
+  }
+  el.innerHTML = items.join('');
+}
+
 function classifyProvider(model) {
   const m = model.toLowerCase();
   if (m.startsWith('claude') || m.includes('anthropic')) return 'Anthropic';
@@ -1488,7 +1602,7 @@ async function init() {
 async function refreshAll() {
   document.getElementById('lastUp').textContent = curLang==='zh' ? '刷新中...' : 'Refreshing...';
   try {
-    await api('/api/overview?refresh=1');
+    await api('/api/overview?refresh=1' + sourceParam());
     await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools()]);
     notyf.success(curLang==='zh' ? '已更新' : 'Updated');
   } catch { notyf.error(curLang==='zh' ? '刷新失败' : 'Refresh failed'); }
