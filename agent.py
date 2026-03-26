@@ -221,11 +221,13 @@ def _merge_codex_data(daily, models, projects, total_sessions, total_messages_re
         except Exception:
             continue
 
-def _scan_all(force=False):
+def _scan_all(force=False, source="all"):
     now = time.time()
-    with _scan_lock:
-        if not force and _scan_cache["data"] and (now - _scan_cache["time"]) < SCAN_TTL:
-            return _scan_cache["data"]
+    # Only use cache for source=all (default)
+    if source == "all":
+        with _scan_lock:
+            if not force and _scan_cache["data"] and (now - _scan_cache["time"]) < SCAN_TTL:
+                return _scan_cache["data"]
 
     daily = {}
     models = {}
@@ -234,14 +236,17 @@ def _scan_all(force=False):
     total_sessions = set()
     total_tokens = 0
 
-    if not PROJECTS_DIR.exists():
+    # For codex-only, skip Claude scan
+    skip_claude = (source == "codex")
+
+    if not skip_claude and not PROJECTS_DIR.exists() and not CODEX_DIR.exists():
         result = {"daily": {}, "models": {}, "projects": {},
                   "total_messages": 0, "total_sessions": 0, "total_tokens": 0}
         with _scan_lock:
             _scan_cache.update(data=result, time=time.time())
         return result
 
-    for project_dir in PROJECTS_DIR.iterdir():
+    for project_dir in (PROJECTS_DIR.iterdir() if not skip_claude and PROJECTS_DIR.exists() else []):
         if not project_dir.is_dir():
             continue
         proj_name = project_dir.name
@@ -319,11 +324,12 @@ def _scan_all(force=False):
                 continue
             total_sessions.add(session_id)
 
-    # Merge Codex CLI data if available
-    try:
-        _merge_codex_data(daily, models, projects, total_sessions, total_messages, total_tokens)
-    except Exception:
-        pass
+    # Merge Codex CLI data if available and source allows
+    if source != "claude":
+        try:
+            _merge_codex_data(daily, models, projects, total_sessions, total_messages, total_tokens)
+        except Exception:
+            pass
 
     for d in daily.values():
         if isinstance(d.get("sessions"), set):
@@ -509,7 +515,8 @@ class AgentHandler(BaseHTTPRequestHandler):
             elif path == "/api/status":
                 self._api_status()
             elif path == "/api/overview":
-                scan = _scan_all(force="refresh" in params)
+                source = params.get("source", ["all"])[0]
+                scan = _scan_all(force="refresh" in params, source=source)
                 today_str = datetime.date.today().isoformat()
                 td = scan["daily"].get(today_str, {})
                 total_cost = sum(_calc_cost(m, v.get("input",0), v.get("output",0), v.get("cache_read",0), v.get("cache_create",0)) for m,v in scan["models"].items())
@@ -525,18 +532,21 @@ class AgentHandler(BaseHTTPRequestHandler):
                 })
             elif path == "/api/daily":
                 days = int(params.get("days", ["30"])[0])
-                scan = _scan_all()
+                source = params.get("source", ["all"])[0]
+                scan = _scan_all(source=source)
                 dates = sorted(scan["daily"].keys())[-days:]
                 activity = [{"date": d, **{k: scan["daily"][d][k] for k in ("messages", "sessions", "tools")}} for d in dates]
                 tokens = [{"date": d, "byModel": scan["daily"][d].get("tokens", {})} for d in dates]
                 self.send_json({"activity": activity, "tokens": tokens})
             elif path == "/api/models":
-                models = _scan_all()["models"]
+                source = params.get("source", ["all"])[0]
+                models = _scan_all(source=source)["models"]
                 for m_name, m_data in models.items():
                     m_data["cost_usd"] = round(_calc_cost(m_name, m_data.get("input",0), m_data.get("output",0), m_data.get("cache_read",0), m_data.get("cache_create",0)), 4)
                 self.send_json({"models": models})
             elif path == "/api/projects":
-                scan = _scan_all()
+                source = params.get("source", ["all"])[0]
+                scan = _scan_all(source=source)
                 sp = sorted(scan["projects"].items(), key=lambda x: -x[1]["tokens_total"])
                 result = []
                 for k, v in sp[:20]:

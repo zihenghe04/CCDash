@@ -4,6 +4,15 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.4.1] — 2026-03-26
+
+### 🔧 Improvements
+- **Remote agent source filtering** — `agent.py` now supports `?source=claude|codex|all` parameter on all API endpoints (overview, daily, models, projects)
+- **End-to-end source isolation** — when switching data source tabs, remote server data is also filtered correctly (previously remote always returned merged data)
+- **Source parameter forwarding** — local server passes `source` to all 6 remote API calls (overview, daily, models, projects, live, logs)
+
+---
+
 ## [0.4.0] — 2026-03-26
 
 ### 🚀 Multi-CLI Support: Codex CLI Integration
