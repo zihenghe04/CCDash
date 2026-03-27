@@ -211,7 +211,8 @@ function switchSource(src) {
     loadOverview(), loadCharts(), loadModels(), loadProjects(),
     loadLive(), loadLogs(), loadSess(), loadTools(), loadRhythm(),
     loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(),
-    loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget()
+    loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget(),
+    loadReport('weekly')
   ]).then(() => {
     if (main) {
       main.style.transition = 'opacity .2s ease-in, transform .2s ease-in';
@@ -2018,10 +2019,10 @@ async function loadMcpTrend() {
     chMcpTrend = new ApexCharts(document.getElementById('chartMcpTrend'), {
       chart:{type:'area',height:220,background:'transparent',foreColor:dk?'#94a3b8':'#64748b',toolbar:{show:false},zoom:{enabled:false}},
       series:[
-        {name:t.builtinTools||'Built-in Tools',data:d.tool_type_trend.map(t=>t.builtin)},
-        {name:t.mcpTools||'MCP Tools',data:d.tool_type_trend.map(t=>t.mcp)}
+        {name:t.builtinTools||'Built-in Tools',data:d.tool_type_trend.map(r=>r.builtin)},
+        {name:t.mcpTools||'MCP Tools',data:d.tool_type_trend.map(r=>r.mcp)}
       ],
-      xaxis:{categories:d.tool_type_trend.map(t=>t.date.slice(5)),labels:{style:{fontSize:'10px'}},tickAmount:8},
+      xaxis:{categories:d.tool_type_trend.map(r=>r.date.slice(5)),labels:{style:{fontSize:'10px'}},tickAmount:8},
       yaxis:{labels:{style:{fontSize:'10px'},formatter:v=>fmt(v)}},
       colors:['#4ade80','#00e5ff'],
       fill:{type:'gradient',gradient:{shadeIntensity:1,opacityFrom:.4,opacityTo:.05}},
@@ -2130,10 +2131,10 @@ async function loadEfficiency() {
       chEffTrend = new ApexCharts(document.getElementById('chartEffTrend'), {
         chart:{type:'line',height:220,background:'transparent',foreColor:dk?'#94a3b8':'#64748b',toolbar:{show:false},zoom:{enabled:false}},
         series:[
-          {name:(t.outputRatio||'Output Ratio')+' %',data:trend.map(t=>t.output_ratio)},
-          {name:(t.cacheRate||'Cache Rate')+' %',data:trend.map(t=>t.cache_rate)}
+          {name:(t.outputRatio||'Output Ratio')+' %',data:trend.map(r=>r.output_ratio)},
+          {name:(t.cacheRate||'Cache Rate')+' %',data:trend.map(r=>r.cache_rate)}
         ],
-        xaxis:{categories:trend.map(t=>t.date.slice(5)),labels:{style:{fontSize:'10px'}},tickAmount:8},
+        xaxis:{categories:trend.map(r=>r.date.slice(5)),labels:{style:{fontSize:'10px'}},tickAmount:8},
         yaxis:{min:0,max:100,labels:{style:{fontSize:'10px'},formatter:v=>v+'%'}},
         colors:['#3b82f6','#22c55e'],
         stroke:{curve:'smooth',width:2},

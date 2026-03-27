@@ -2450,57 +2450,47 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         # (Desktop App sessions don't write to history.jsonl)
         if source != "codex":
             desktop_eps = {"claude-desktop", "sdk-ts", "sdk-cli", "local-agent"}
+            # Pre-build session→project map to avoid O(n*m) dir scans
+            session_project_map = {}  # sid -> (proj_dir_path, friendly_name)
+            if PROJECTS_DIR.exists():
+                for proj_dir in PROJECTS_DIR.iterdir():
+                    if not proj_dir.is_dir():
+                        continue
+                    fname = friendly_project_name(proj_dir.name)
+                    for jf in proj_dir.glob("*.jsonl"):
+                        session_project_map[jf.stem] = (proj_dir / jf.name, fname)
+
             for sid, ep_val in ep_map.items():
                 if ep_val in desktop_eps and sid not in seen:
                     seen.add(sid)
-                    # Find project from session file path
-                    proj_name = ""
-                    proj_short = "~"
-                    for proj_dir in PROJECTS_DIR.iterdir():
-                        if not proj_dir.is_dir():
-                            continue
-                        if (proj_dir / f"{sid}.jsonl").exists():
-                            proj_name = friendly_project_name(proj_dir.name)
-                            proj_short = proj_name
-                            break
-                    # Get timestamp from session file (first event)
+                    sf_path, proj_short = session_project_map.get(sid, (None, "~"))
                     ts = 0
                     first_prompt = ""
-                    for proj_dir in PROJECTS_DIR.iterdir():
-                        sf = proj_dir / f"{sid}.jsonl"
-                        if sf.exists():
-                            try:
-                                with open(sf, "r", encoding="utf-8", errors="replace") as sf_f:
-                                    for sline in sf_f:
-                                        try:
-                                            sevt = json.loads(sline.strip())
-                                            if sevt.get("timestamp"):
-                                                ts_str = sevt["timestamp"]
-                                                if isinstance(ts_str, str):
-                                                    ts = int(datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp() * 1000)
-                                                break
-                                        except:
-                                            continue
-                                # Get first user message as prompt
-                                with open(sf, "r", encoding="utf-8", errors="replace") as sf_f:
-                                    for sline in sf_f:
-                                        try:
-                                            sevt = json.loads(sline.strip())
-                                            if sevt.get("type") == "user":
-                                                msg = sevt.get("message", "")
-                                                if isinstance(msg, dict):
-                                                    msg = str(msg.get("content", ""))
-                                                first_prompt = (msg or "")[:100]
-                                                break
-                                        except:
-                                            continue
-                            except:
-                                pass
-                            break
+                    if sf_path and sf_path.exists():
+                        try:
+                            with open(sf_path, "r", encoding="utf-8", errors="replace") as sf_f:
+                                for sline in sf_f:
+                                    try:
+                                        sevt = json.loads(sline.strip())
+                                        if sevt.get("timestamp") and ts == 0:
+                                            ts_str = sevt["timestamp"]
+                                            if isinstance(ts_str, str):
+                                                ts = int(datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp() * 1000)
+                                        if sevt.get("type") == "user" and not first_prompt:
+                                            msg = sevt.get("message", "")
+                                            if isinstance(msg, dict):
+                                                msg = str(msg.get("content", ""))
+                                            first_prompt = (msg or "")[:100]
+                                        if ts and first_prompt:
+                                            break
+                                    except Exception:
+                                        continue
+                        except Exception:
+                            pass
                     unique_sessions.append({
                         "sessionId": sid,
                         "timestamp": ts,
-                        "project": proj_name,
+                        "project": proj_short,
                         "projectShort": proj_short,
                         "firstPrompt": first_prompt,
                         "source": "claude",
@@ -3572,13 +3562,30 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # Estimate minutes until 5h quota depletes
         # 5h window = 300 minutes. If we've used cur_util% in (300 - remaining) minutes,
-        # at current rate the remaining% will be consumed in:
+        # At current burn rate, how many minutes until we exhaust remaining quota?
+        # Key insight: if we consumed (100 - remaining_pct)% in elapsed time,
+        # and burn_rate is tokens/min over the last 30m, then:
+        # remaining_minutes ≈ (remaining_pct / utilization_rate_per_min)
         minutes_to_throttle = None
-        if burn_tpm > 0 and remaining_pct > 0:
-            # Rough: remaining_pct% of the 5h window at current token rate
-            minutes_to_throttle = round(remaining_pct / 100 * 300)
-        elif remaining_pct <= 0:
+        if remaining_pct <= 0:
             minutes_to_throttle = 0
+        elif burn_rpm > 0:
+            # Estimate: at current call rate, how fast is utilization climbing?
+            # We used cur_util% so far. If 30m burn accounts for X% of the 5h window,
+            # then remaining_pct / X * 30 = minutes left.
+            # Simplified: remaining proportion of 5h at current rate
+            calls_30m = burn_30m.get("calls", 0)
+            if calls_30m > 0 and cur_util > 0:
+                # utilization_per_min ≈ cur_util / elapsed_minutes (rough)
+                # Better: use 30m rate as representative
+                util_per_30m = cur_util * 0.1 if cur_util < 50 else cur_util * 0.05  # rough scaling
+                if util_per_30m > 0:
+                    minutes_to_throttle = round(remaining_pct / util_per_30m * 30)
+                    minutes_to_throttle = min(minutes_to_throttle, 300)
+                else:
+                    minutes_to_throttle = round(remaining_pct / 100 * 300)
+            else:
+                minutes_to_throttle = round(remaining_pct / 100 * 300)
 
         # 4. Risk level
         if cur_util >= 95 or remaining_pct <= 0:
@@ -3592,13 +3599,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         else:
             risk = "safe"
 
-        # 5. Safe RPM suggestion
-        # If we want to last the full remaining window, what RPM should we use?
+        # 5. Safe RPM suggestion: to last the remaining window, spread current calls evenly
         safe_rpm = None
         if minutes_to_throttle and minutes_to_throttle > 0 and burn_rpm > 0:
-            # To spread remaining quota evenly:
-            safe_rpm = round(burn_rpm * (minutes_to_throttle / 300) * (remaining_pct / 100), 1)
-            safe_rpm = max(0.5, safe_rpm)
+            safe_rpm = round(burn_rpm * (remaining_pct / 100), 1)
+            safe_rpm = max(0.1, safe_rpm)
 
         # 6. Historical throttle events (detect utilization jumps from ~100% to low%)
         # This is approximated from the quota data patterns
@@ -3776,38 +3781,26 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         daily = scan.get("daily", {})
         insights = []
 
-        # Rule 1: Model downgrade — Opus used for simple tasks
+        # Rule 1: Model downgrade — compare actual Opus cost vs hypothetical Sonnet cost
         opus_models = [m for m in models if "opus" in m.lower()]
         sonnet_models = [m for m in models if "sonnet" in m.lower()]
         if opus_models and sonnet_models:
-            # Find sessions where Opus was used but output was small (< 500 tokens avg)
-            opus_simple_sessions = 0
-            opus_total_sessions = 0
-            potential_savings = 0.0
-            for sid, se in session_eff.items():
-                if se.get("calls", 0) == 0:
-                    continue
-                # Rough check: if avg output per call < 500, it's a "simple" task
-                avg_out = se["output"] / se["calls"]
-                total_tok = se["input"] + se["output"] + se["cache_read"] + se["cache_create"]
-                if avg_out < 500 and se["calls"] <= 5:
-                    opus_total_sessions += 1
-                    # Check if this session used primarily opus (by token volume proxy)
-                    opus_simple_sessions += 1
-                    # Savings: Opus vs Sonnet price difference on this session's tokens
-                    opus_cost = _calc_cost(opus_models[0], se["input"], se["output"], se["cache_read"], se["cache_create"])
-                    sonnet_cost = _calc_cost(sonnet_models[0], se["input"], se["output"], se["cache_read"], se["cache_create"])
-                    if opus_cost > sonnet_cost:
-                        potential_savings += opus_cost - sonnet_cost
-
-            if opus_simple_sessions > 5 and potential_savings > 0.5:
+            opus_total_cost = 0.0
+            opus_as_sonnet_cost = 0.0
+            for om in opus_models:
+                md = models[om]
+                opus_total_cost += _calc_cost(om, md.get("input", 0), md.get("output", 0), md.get("cache_read", 0), md.get("cache_create", 0))
+                opus_as_sonnet_cost += _calc_cost(sonnet_models[0], md.get("input", 0), md.get("output", 0), md.get("cache_read", 0), md.get("cache_create", 0))
+            potential_savings = opus_total_cost - opus_as_sonnet_cost
+            if potential_savings > 1.0:
+                pct_savings = round(potential_savings / opus_total_cost * 100) if opus_total_cost > 0 else 0
                 insights.append({
                     "type": "model_downgrade",
-                    "severity": "high" if potential_savings > 5 else "medium",
-                    "title_en": "Use Sonnet for simple tasks",
-                    "title_zh": "简单任务使用 Sonnet",
-                    "desc_en": f"{opus_simple_sessions} sessions used Opus for short responses (<500 tokens). Switching to Sonnet could save ~${potential_savings:.2f}.",
-                    "desc_zh": f"{opus_simple_sessions} 个会话使用 Opus 完成简短响应（<500 token），切换到 Sonnet 可节省约 ${potential_savings:.2f}。",
+                    "severity": "high" if potential_savings > 10 else "medium",
+                    "title_en": f"Opus → Sonnet could save {pct_savings}%",
+                    "title_zh": f"Opus → Sonnet 可节省 {pct_savings}%",
+                    "desc_en": f"Your Opus usage costs ${opus_total_cost:.2f}. The same tokens on Sonnet would cost ${opus_as_sonnet_cost:.2f}, saving ~${potential_savings:.2f}.",
+                    "desc_zh": f"Opus 用量成本 ${opus_total_cost:.2f}，同样的 token 在 Sonnet 上仅需 ${opus_as_sonnet_cost:.2f}，可节省约 ${potential_savings:.2f}。",
                     "savings_usd": round(potential_savings, 2),
                     "icon": "ph-swap",
                 })
@@ -4011,7 +4004,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         def _period_stats(start_date, end_date):
             """Aggregate stats for a date range"""
             stats = {"messages": 0, "sessions": 0, "tools": 0, "tokens": 0, "cost": 0.0, "days": 0,
-                     "models": {}, "top_project": "", "top_project_tokens": 0}
+                     "models": {}, "cache_read": 0, "all_input": 0}
             d = start_date
             while d <= end_date:
                 ds = d.isoformat()
@@ -4027,6 +4020,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         stats["models"][m] = stats["models"].get(m, 0) + tok
                         stats["cost"] += _calc_cost(m, t.get("input", 0), t.get("output", 0),
                                                     t.get("cache_read", 0), t.get("cache_create", 0))
+                        stats["cache_read"] += t.get("cache_read", 0)
+                        stats["all_input"] += t.get("input", 0) + t.get("cache_read", 0) + t.get("cache_create", 0)
                 d += datetime.timedelta(days=1)
             stats["cost"] = round(stats["cost"], 4)
             return stats
@@ -4077,9 +4072,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "icon": "ph-cpu",
             })
 
-        # Best cache rate in period
-        total_cr = scan.get("total_cache_read", 0)
-        all_in = scan.get("total_input", 0) + total_cr + scan.get("total_cache_create", 0)
+        # Cache rate for this period (not global)
+        total_cr = current.get("cache_read", 0)
+        all_in = current.get("all_input", 0)
         if all_in > 0:
             highlights.append({
                 "label_en": "Cache Rate", "label_zh": "缓存命中率",
