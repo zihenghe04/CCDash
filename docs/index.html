@@ -171,8 +171,8 @@
         </div>
         <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
           <div class="rp-item"><span class="rp-val" id="rpTimeLeft">—</span><span class="rp-label" data-i="timeToThrottle">Time to Throttle</span></div>
-          <div class="rp-item"><span class="rp-val" id="rpBurnRpm">—</span><span class="rp-label" data-i="currentRpm">Current RPM (30m)</span></div>
-          <div class="rp-item"><span class="rp-val" id="rpBurnTpm">—</span><span class="rp-label" data-i="currentTpm">Current TPM (30m)</span></div>
+          <div class="rp-item"><span class="rp-val" id="rpBurnRpm">—</span><span class="rp-label">RPM</span></div>
+          <div class="rp-item"><span class="rp-val" id="rpBurnTpm">—</span><span class="rp-label">TPM</span></div>
           <div class="rp-item"><span class="rp-val" id="rpSafeRpm">—</span><span class="rp-label" data-i="safeRpm">Safe RPM</span></div>
         </div>
       </div>
@@ -376,11 +376,11 @@
       </div>
     </div>
     <div class="card sec">
-      <div class="sec-header">
+      <div class="sec-header" style="cursor:pointer" onclick="toggleSection('logsBody',this)">
         <div><div class="sec-title"><i class="ph ph-list-bullets"></i> <span data-i="usageLog">Usage Logs</span></div><div class="sec-desc" data-i="usageLogDesc">Detailed API call records</div></div>
-        <div class="sec-header-right"><button class="btn" onclick="exportData('csv')" title="Export CSV"><i class="ph ph-download"></i> <span data-i="exportCSV">CSV</span></button><button class="btn" onclick="exportData('json')" title="Export JSON" style="margin-left:4px"><i class="ph ph-download"></i> <span data-i="exportJSON">JSON</span></button><span class="meta" id="logTotal" style="margin-left:8px">—</span><button class="auto-refresh-btn active" id="autoRefreshBtn" onclick="toggleAutoRefresh()"><span class="ar-dot"></span><span id="autoRefreshText" data-i="stopAutoRefresh">Stop Auto-refresh</span></button></div>
+        <div class="sec-header-right"><button class="btn" onclick="event.stopPropagation();exportData('csv')" title="Export CSV"><i class="ph ph-download"></i> <span data-i="exportCSV">CSV</span></button><button class="btn" onclick="event.stopPropagation();exportData('json')" title="Export JSON" style="margin-left:4px"><i class="ph ph-download"></i> <span data-i="exportJSON">JSON</span></button><span class="meta" id="logTotal" style="margin-left:8px">—</span><button class="auto-refresh-btn active" id="autoRefreshBtn" onclick="event.stopPropagation();toggleAutoRefresh()"><span class="ar-dot"></span><span id="autoRefreshText" data-i="stopAutoRefresh">Stop Auto-refresh</span></button><i class="ph ph-caret-down" style="margin-left:8px;transition:transform .2s"></i></div>
       </div>
-      <div class="tw"><table><thead><tr><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="model">Model</th><th><span class="tk-in">↓</span> Input</th><th><span class="tk-out">↑</span> Output</th><th><span class="tk-cw">⟳</span> Cache W</th><th><span class="tk-cr">⟲</span> Cache R</th><th style="color:var(--green)">$ Cost</th><th data-i="ttft">TTFT</th><th data-i="duration">Duration</th><th data-i="status">Status</th></tr></thead><tbody id="tbLogs"></tbody></table></div>
+      <div id="logsBody"><div class="tw"><table><thead><tr><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="model">Model</th><th><span class="tk-in">↓</span> Input</th><th><span class="tk-out">↑</span> Output</th><th><span class="tk-cw">⟳</span> Cache W</th><th><span class="tk-cr">⟲</span> Cache R</th><th style="color:var(--green)">$ Cost</th><th data-i="ttft">TTFT</th><th data-i="duration">Duration</th><th data-i="status">Status</th></tr></thead><tbody id="tbLogs"></tbody></table></div>
       <div class="pagination">
         <div class="pagination-left">
           <div class="pagination-info" id="paginationInfo">—</div>
@@ -389,13 +389,13 @@
         </div>
         <div class="pagination-btns" id="paginationBtns"></div>
       </div>
-    </div>
+    </div></div>
     <!-- Session browser -->
     <div class="card sec">
-      <div class="sec-title" style="justify-content:space-between"><span><i class="ph ph-clock-counter-clockwise"></i> <span data-i="recentSessions">Recent Sessions</span></span><select id="sFilt" onchange="loadSess()" class="filter-select" style="min-width:120px"><option value="" data-i="allProjects">All</option></select></div>
+      <div class="sec-title" style="justify-content:space-between"><span><i class="ph ph-clock-counter-clockwise"></i> <span data-i="recentSessions">Recent Sessions</span></span><div style="display:flex;gap:6px;align-items:center"><button class="btn" id="compareBtn" style="display:none" onclick="compareSelectedSessions()"><i class="ph ph-chart-bar"></i> <span data-i="compare">Compare</span></button><select id="sFilt" onchange="loadSess()" class="filter-select" style="min-width:120px"><option value="" data-i="allProjects">All</option></select></div></div>
       <div class="sec-desc" data-i="recentSessionsDesc">Recently active sessions</div>
       <div class="search-box"><input class="search-input" id="sSearch" oninput="debounceSearch()" placeholder="Search sessions..."><button class="btn" onclick="loadSess()"><i class="ph ph-magnifying-glass"></i> <span data-i="search">Search</span></button></div>
-      <div class="tw" style="max-height:400px;overflow-y:auto"><table><thead><tr><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="content">Content</th></tr></thead><tbody id="tbSess"></tbody></table></div>
+      <div class="tw" style="max-height:400px;overflow-y:auto"><table><thead><tr><th style="width:24px"><input type="checkbox" onclick="toggleAllSessChecks(this.checked)"></th><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="content">Content</th></tr></thead><tbody id="tbSess"></tbody></table></div>
     </div>
     <!-- Web Conversations -->
     <div class="card sec" id="webConvSection" style="display:none">

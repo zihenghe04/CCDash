@@ -3637,6 +3637,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         # 6. Historical throttle events (detect utilization jumps from ~100% to low%)
         # This is approximated from the quota data patterns
 
+        rate_5m = rates.get("5m", {})
         self.send_json({
             "utilization": cur_util,
             "remaining_pct": remaining_pct,
@@ -3646,8 +3647,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "minutes_to_throttle": minutes_to_throttle,
             "risk": risk,
             "safe_rpm": safe_rpm,
-            "burn_rpm_30m": burn_rpm,
-            "burn_tpm_30m": burn_tpm,
+            "rpm": rate_5m.get("rpm", 0),
+            "tpm": rate_5m.get("tpm", 0),
         })
 
     # ============================================================
@@ -4203,9 +4204,21 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json({"projects": [], "commits": [], "summary": {}})
             return
 
-        # Get git log for each project
+        # Pre-compute daily cost per project for proportional attribution
+        daily_project_cost = {}  # (date, project) -> total_cost
+        daily_project_tokens = {}
+        for d_str, dd in daily.items():
+            for m, t in dd.get("tokens", {}).items():
+                c = _calc_cost(m, t.get("input", 0), t.get("output", 0), t.get("cache_read", 0), t.get("cache_create", 0))
+                tok = t.get("input", 0) + t.get("output", 0) + t.get("cache_read", 0) + t.get("cache_create", 0)
+                # Attribute to all projects equally for this day (approximation)
+                daily_project_cost[d_str] = daily_project_cost.get(d_str, 0) + c
+                daily_project_tokens[d_str] = daily_project_tokens.get(d_str, 0) + tok
+
+        # Count commits per day to split cost evenly
         cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
-        all_commits = []
+        day_commit_counts = {}  # date -> commit count
+        raw_commits = []
 
         for gp in git_projects:
             try:
@@ -4224,43 +4237,26 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         continue
                     commit_hash, commit_ts, subject = parts
                     commit_date = commit_ts[:10]
-
-                    # Find Claude cost in a time window around the commit (±2h)
-                    try:
-                        ct = datetime.datetime.fromisoformat(commit_ts)
-                    except Exception:
-                        continue
-                    window_start = (ct - datetime.timedelta(hours=2)).isoformat()
-                    window_end = (ct + datetime.timedelta(minutes=30)).isoformat()
-
-                    # Sum session costs in the window for this project
-                    commit_cost = 0.0
-                    commit_tokens = 0
-                    for sid, se in session_eff.items():
-                        if se.get("project") != gp["friendly"]:
-                            continue
-                        # Rough: attribute proportional cost based on session existence
-                        s_total = se["input"] + se["output"] + se["cache_read"] + se["cache_create"]
-                        if s_total > 0 and se.get("calls", 0) > 0:
-                            # Use daily cost as approximation
-                            dd = daily.get(commit_date, {}).get("tokens", {})
-                            for m, t in dd.items():
-                                commit_cost += _calc_cost(m, t.get("input", 0), t.get("output", 0),
-                                                          t.get("cache_read", 0), t.get("cache_create", 0))
-                            commit_tokens += s_total
-                            break  # Only match once per commit
-
-                    all_commits.append({
-                        "hash": commit_hash[:8],
-                        "date": commit_date,
-                        "timestamp": commit_ts,
-                        "subject": subject[:80],
-                        "project": gp["friendly"],
-                        "ai_cost": round(commit_cost, 4),
-                        "ai_tokens": commit_tokens,
-                    })
+                    day_commit_counts[commit_date] = day_commit_counts.get(commit_date, 0) + 1
+                    raw_commits.append((commit_hash, commit_ts, commit_date, subject, gp["friendly"]))
             except Exception:
                 continue
+
+        # Assign cost per commit = daily_cost / commits_that_day
+        all_commits = []
+        for commit_hash, commit_ts, commit_date, subject, project in raw_commits:
+            day_cost = daily_project_cost.get(commit_date, 0)
+            day_tokens = daily_project_tokens.get(commit_date, 0)
+            n_commits = day_commit_counts.get(commit_date, 1)
+            all_commits.append({
+                "hash": commit_hash[:8],
+                "date": commit_date,
+                "timestamp": commit_ts,
+                "subject": subject[:80],
+                "project": project,
+                "ai_cost": round(day_cost / n_commits, 4),
+                "ai_tokens": round(day_tokens / n_commits),
+            })
 
         all_commits.sort(key=lambda c: c["timestamp"], reverse=True)
 

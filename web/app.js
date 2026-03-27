@@ -52,7 +52,7 @@ const I18N = {
     webConversations:'Web & 客户端', webConversationsDesc:'来自网页版、桌面客户端和 SDK 的会话',
     todayBreakdown:'今日模型消耗', todayBreakdownDesc:'按模型统计今日调用次数、Token 和成本',
     mcpServers:'MCP 服务器', mcpServersDesc:'按服务器统计 MCP 工具使用', mcpTrend:'MCP 趋势', mcpTrendDesc:'内置工具 vs MCP 工具每日使用趋势',
-    ratePredict:'限速预测', riskLevel:'风险等级', timeToThrottle:'预计限速', currentRpm:'当前 RPM (30m)', currentTpm:'当前 TPM (30m)', safeRpm:'安全 RPM',
+    ratePredict:'限速预测', riskLevel:'风险等级', timeToThrottle:'剩余可用时间', currentRpm:'RPM', currentTpm:'TPM', safeRpm:'安全 RPM',
     efficiency:'Prompt 效率', efficiencyDesc:'输出比率、缓存评级与交互模式分类', effTrend:'效率趋势', effTrendDesc:'每日输出比率与缓存命中率',
     outputRatio:'输出比率', cacheGrade:'缓存评级', sessionsAnalyzed:'分析会话数', interactionModes:'交互模式',
     modeExploration:'探索', modeBuilding:'构建', modeDebugging:'调试', modeReview:'审查',
@@ -71,7 +71,7 @@ const I18N = {
     totalCommits:'总 commit', aiAssistedPct:'AI 辅助率', avgCostPerCommit:'每 commit 成本',
     webhookConfig:'Webhook 通知', webhookConfigDesc:'通过 Slack、Discord 或 HTTP 接收告警',
     webhookUrl:'Webhook URL', testWebhook:'测试', enabled:'已启用',
-    commit:'提交', aiCost:'AI 成本',
+    commit:'提交', aiCost:'AI 成本', compare:'对比',
     accounts:'多账户', accountsDesc:'管理多个 Claude 账户', addAccount:'添加账户', accountName:'账户名称',
     plugins:'插件', pluginsDesc:'数据源插件管理', pluginBuiltin:'内置', pluginCustom:'自定义'
   },
@@ -120,7 +120,7 @@ const I18N = {
     webConversations:'Web & Desktop', webConversationsDesc:'Conversations from web, desktop app & SDK',
     todayBreakdown:"Today's Cost by Model", todayBreakdownDesc:'Per-model calls, tokens and cost for today',
     mcpServers:'MCP Servers', mcpServersDesc:'MCP tool usage by server', mcpTrend:'MCP Trend', mcpTrendDesc:'Built-in vs MCP tool usage over time',
-    ratePredict:'Rate Limit Prediction', riskLevel:'Risk Level', timeToThrottle:'Time to Throttle', currentRpm:'Current RPM (30m)', currentTpm:'Current TPM (30m)', safeRpm:'Safe RPM',
+    ratePredict:'Rate Limit Prediction', riskLevel:'Risk Level', timeToThrottle:'Time to Throttle', currentRpm:'RPM', currentTpm:'TPM', safeRpm:'Safe RPM',
     efficiency:'Prompt Efficiency', efficiencyDesc:'Output ratio, cache grade & interaction modes', effTrend:'Efficiency Trend', effTrendDesc:'Daily output ratio & cache rate',
     outputRatio:'Output Ratio', cacheGrade:'Cache Grade', sessionsAnalyzed:'Sessions Analyzed', interactionModes:'Interaction Modes',
     modeExploration:'Exploration', modeBuilding:'Building', modeDebugging:'Debugging', modeReview:'Review',
@@ -139,7 +139,7 @@ const I18N = {
     totalCommits:'Total Commits', aiAssistedPct:'AI Assisted', avgCostPerCommit:'Avg Cost/Commit',
     webhookConfig:'Webhook Notifications', webhookConfigDesc:'Get alerts via Slack, Discord, or HTTP webhook',
     webhookUrl:'Webhook URL', testWebhook:'Test', enabled:'Enabled',
-    commit:'Commit', aiCost:'AI Cost',
+    commit:'Commit', aiCost:'AI Cost', compare:'Compare',
     accounts:'Multi-Account', accountsDesc:'Manage multiple Claude accounts', addAccount:'Add Account', accountName:'Account Name',
     plugins:'Plugins', pluginsDesc:'Data source plugin management', pluginBuiltin:'Built-in', pluginCustom:'Custom'
   }
@@ -544,8 +544,12 @@ async function loadStatus() {
 
   document.getElementById('pName').textContent = d.profile_name || '—';
   updateGauge(d.utilization || 0);
-  document.getElementById('tMsg').textContent = d.today_messages;
-  document.getElementById('tSes').textContent = d.today_sessions;
+  // today_messages from status (history.jsonl) may undercount; overview provides scanner-based count
+  // Keep status values as fallback, overview will overwrite with accurate data
+  if (!window._allData._todayMsgsFromOverview) {
+    document.getElementById('tMsg').textContent = d.today_messages;
+    document.getElementById('tSes').textContent = d.today_sessions;
+  }
   window._allData._todayMsgs = d.today_messages;
   window._allData._todaySess = d.today_sessions;
   if (d.resets_at) {
@@ -619,6 +623,10 @@ function renderOverviewData(d) {
   document.getElementById('cTodayCalls').textContent = d.today_messages || 0;
   document.getElementById('cTodayTools').textContent = d.today_tools || 0;
   document.getElementById('bdToday').textContent = (curLang==='zh' ? '今日 +' : 'Today +') + d.today_messages;
+  // Override gauge area today counts with scanner-accurate data
+  document.getElementById('tMsg').textContent = d.today_messages || 0;
+  document.getElementById('tSes').textContent = d.today_sessions || 0;
+  window._allData._todayMsgsFromOverview = true;
   // RPM, TPM, Avg Duration, Avg TTFT
   const rpmEl = document.getElementById('rpmVal'); if (rpmEl) rpmEl.textContent = d.rpm || 0;
   const tpmEl = document.getElementById('tpmVal'); if (tpmEl) tpmEl.textContent = fmt(d.tpm || 0);
@@ -1088,8 +1096,9 @@ function renderSessionsData(d) {
   // CLI + Codex + remote (no entrypoint) sessions stay in main list
   const cliSessions = d.sessions.filter(s => !_isDesktopSession(s));
   document.getElementById('tbSess').innerHTML = cliSessions.map(s =>
-    `<tr data-row-source="${s.source||'claude'}" onclick="showSessionDetail('${s.sessionId}')" title="${curLang==='zh'?'点击查看详情':'Click for details'}"><td>${fmtT(s.timestamp)}</td><td title="${s.project}">${s.projectShort}${epBadge(s.entrypoint)}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
+    `<tr data-row-source="${s.source||'claude'}"><td style="width:24px;padding:4px"><input type="checkbox" class="sess-check" data-sid="${s.sessionId}" onclick="event.stopPropagation();updateCompareBtn()"></td><td onclick="showSessionDetail('${s.sessionId}')" style="cursor:pointer" title="${curLang==='zh'?'点击查看详情':'Click for details'}">${fmtT(s.timestamp)}</td><td onclick="showSessionDetail('${s.sessionId}')" style="cursor:pointer" title="${s.project}">${s.projectShort}${epBadge(s.entrypoint)}</td><td onclick="showSessionDetail('${s.sessionId}')" style="cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
   ).join('');
+  updateCompareBtn();
 
   // Desktop/SDK sessions → render in Web & Desktop section
   const nonCliSessions = d.sessions.filter(s => _isDesktopSession(s));
@@ -2058,7 +2067,7 @@ async function loadRatePrediction() {
     if (!d) return;
     const card = document.getElementById('ratePredictCard');
     // Only show if we have some quota data
-    if (d.utilization <= 0 && d.burn_rpm_30m <= 0) { if(card) card.style.display='none'; return; }
+    if (d.utilization <= 0 && d.rpm <= 0) { if(card) card.style.display='none'; return; }
     if (card) card.style.display = '';
 
     // Risk badge
@@ -2089,9 +2098,9 @@ async function loadRatePrediction() {
 
     // Burn rates
     const brEl = document.getElementById('rpBurnRpm');
-    if (brEl) brEl.textContent = d.burn_rpm_30m || '0';
+    if (brEl) brEl.textContent = d.rpm || '0';
     const btEl = document.getElementById('rpBurnTpm');
-    if (btEl) btEl.textContent = fmt(d.burn_tpm_30m || 0);
+    if (btEl) btEl.textContent = fmt(d.tpm || 0);
 
     // Safe RPM
     const srEl = document.getElementById('rpSafeRpm');
@@ -2333,6 +2342,97 @@ async function testWebhook() {
     if (r.ok) notyf.success(curLang==='zh'?'测试成功':'Test sent');
     else notyf.error(r.error||'Failed');
   } catch(e) { notyf.error(String(e)); }
+}
+
+/* ===== Multi-select session compare ===== */
+function updateCompareBtn() {
+  const checked = document.querySelectorAll('.sess-check:checked');
+  const btn = document.getElementById('compareBtn');
+  if (btn) btn.style.display = checked.length >= 2 ? '' : 'none';
+  if (btn && checked.length >= 2) btn.querySelector('span').textContent = `${curLang==='zh'?'对比':'Compare'} (${checked.length})`;
+}
+function toggleAllSessChecks(val) {
+  document.querySelectorAll('.sess-check').forEach(c => c.checked = val);
+  updateCompareBtn();
+}
+async function compareSelectedSessions() {
+  const sids = Array.from(document.querySelectorAll('.sess-check:checked')).map(c => c.dataset.sid);
+  if (sids.length < 2) return;
+
+  const t = I18N[curLang] || I18N.zh;
+  const modal = document.getElementById('sessionModal');
+  const content = document.getElementById('sessionModalContent');
+  modal.style.display = 'flex';
+  content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-2)">${t.loading||'Loading...'}</div>`;
+
+  // Fetch all session details in parallel
+  const details = await Promise.all(sids.map(sid => api(`/api/session-detail?id=${sid}`)));
+  const valid = details.filter(d => d && d.stats);
+  if (!valid.length) { content.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-2)">No data</div>`; return; }
+
+  // Aggregate stats
+  let totalMsgs = 0, totalCost = 0, totalInput = 0, totalOutput = 0, totalDuration = 0;
+  const modelMap = {}, toolMap = {};
+  for (const d of valid) {
+    const s = d.stats;
+    totalMsgs += s.messages || 0;
+    totalCost += s.total_cost || 0;
+    totalInput += s.total_input || 0;
+    totalOutput += s.total_output || 0;
+    totalDuration += s.duration_ms || 0;
+    if (s.models) s.models.forEach(m => { modelMap[m] = (modelMap[m]||0) + 1; });
+    if (s.tools_summary) Object.entries(s.tools_summary).forEach(([k,v]) => { toolMap[k] = (toolMap[k]||0) + v; });
+  }
+
+  // Build model/tool chart data
+  const modelEntries = Object.entries(modelMap).sort((a,b) => b[1]-a[1]);
+  const toolEntries = Object.entries(toolMap).sort((a,b) => b[1]-a[1]);
+
+  // Per-session comparison table
+  const rows = valid.map((d,i) => {
+    const s = d.stats;
+    return `<tr>
+      <td class="mono" style="font-size:10px;color:var(--accent)">${sids[i]?.slice(0,8)||'?'}</td>
+      <td>${s.messages||0}</td>
+      <td>${fmt(s.total_input||0)}</td>
+      <td>${fmt(s.total_output||0)}</td>
+      <td style="color:var(--green)">$${(s.total_cost||0).toFixed(2)}</td>
+      <td>${s.duration_ms ? Math.round(s.duration_ms/1000)+'s' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `<div style="padding:20px">
+    <h3 style="font:700 18px var(--font);color:var(--text-0);margin:0 0 16px">${curLang==='zh'?'会话对比分析':'Session Comparison'} (${valid.length})</h3>
+    <div class="report-grid" style="margin-bottom:16px">
+      <div class="report-stat"><div class="report-stat-val">${totalMsgs}</div><div class="report-stat-label">${t.msgs||'Messages'}</div></div>
+      <div class="report-stat"><div class="report-stat-val" style="color:var(--green)">$${totalCost.toFixed(2)}</div><div class="report-stat-label">${t.cost||'Cost'}</div></div>
+      <div class="report-stat"><div class="report-stat-val">${fmt(totalInput)}</div><div class="report-stat-label">↓ ${t.input||'Input'}</div></div>
+      <div class="report-stat"><div class="report-stat-val">${fmt(totalOutput)}</div><div class="report-stat-label">↑ ${t.output||'Output'}</div></div>
+      <div class="report-stat"><div class="report-stat-val">${totalDuration>0?Math.round(totalDuration/1000)+'s':'—'}</div><div class="report-stat-label">${t.duration||'Duration'}</div></div>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+      <div style="flex:1;min-width:200px">
+        <div style="font:600 11px var(--font);color:var(--text-1);margin-bottom:6px">${t.model||'Models'}</div>
+        ${modelEntries.map(([m,c]) => `<div style="display:flex;align-items:center;gap:6px;margin:3px 0;font-size:11px"><span style="width:8px;height:8px;border-radius:50%;background:${mC(m)};flex-shrink:0"></span><span style="flex:1">${m.replace('claude-','')}</span><span class="mono">${c}x</span></div>`).join('')}
+      </div>
+      <div style="flex:1;min-width:200px">
+        <div style="font:600 11px var(--font);color:var(--text-1);margin-bottom:6px">${t.tools||'Tools'}</div>
+        ${toolEntries.slice(0,8).map(([k,v]) => `<div style="display:flex;align-items:center;gap:6px;margin:3px 0;font-size:11px"><span style="width:8px;height:8px;border-radius:50%;background:${TOOL_COLORS[k]||'#9ca3af'};flex-shrink:0"></span><span style="flex:1">${k}</span><span class="mono">${v}</span></div>`).join('')}
+      </div>
+    </div>
+    <div style="font:600 11px var(--font);color:var(--text-1);margin-bottom:6px">${curLang==='zh'?'逐会话明细':'Per-Session Detail'}</div>
+    <div class="tw"><table><thead><tr><th>Session</th><th>${t.msgs||'Msgs'}</th><th>↓ Input</th><th>↑ Output</th><th>${t.cost||'Cost'}</th><th>${t.duration||'Duration'}</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </div>`;
+}
+
+/* ===== Section collapse ===== */
+function toggleSection(bodyId, headerEl) {
+  const body = document.getElementById(bodyId);
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  const chevron = headerEl?.querySelector('.ph-caret-down,.ph-caret-up');
+  if (chevron) { chevron.style.transform = isOpen ? 'rotate(-90deg)' : ''; }
 }
 
 /* ===== v0.9.0: Multi-Account ===== */
