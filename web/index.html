@@ -323,6 +323,15 @@
         <div id="chartEffTrend" style="min-height:220px"></div>
       </div>
     </div>
+    <!-- v0.8.0: Git Integration -->
+    <div class="card sec" id="gitStatsCard" style="display:none">
+      <div class="sec-title"><i class="ph ph-git-branch"></i> <span data-i="gitStats">Git Integration</span></div>
+      <div class="sec-desc" data-i="gitStatsDesc">AI cost per commit</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px">
+        <div id="gitSummary"></div>
+        <div id="gitCommits" style="flex:1;min-width:300px"></div>
+      </div>
+    </div>
     <!-- v0.7.2: Comparison Report -->
     <div class="card sec">
       <div class="sec-header">
@@ -449,6 +458,27 @@
         </div>
       </div>
       <button onclick="saveBudget()" style="margin-top:12px;padding:8px 24px;border-radius:8px;border:none;background:var(--accent);color:#fff;font:600 12px var(--font);cursor:pointer" data-i="save">Save</button>
+    </div>
+
+    <div class="card sec" style="max-width:800px;margin-top:16px">
+      <div class="sec-title"><i class="ph ph-bell-ringing"></i> <span data-i="webhookConfig">Webhook Notifications</span></div>
+      <div class="sec-desc" data-i="webhookConfigDesc">Get alerts via Slack, Discord, or HTTP webhook</div>
+      <div style="margin-top:12px">
+        <label style="font:600 10px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px" data-i="webhookUrl">Webhook URL</label>
+        <input id="webhookUrl" type="url" placeholder="https://hooks.slack.com/services/..." style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-l);background:var(--bg-3);color:var(--text-0);font:13px var(--mono)">
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <select id="webhookFormat" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border-l);background:var(--bg-3);color:var(--text-0);font:12px var(--font)">
+            <option value="generic">Generic HTTP</option>
+            <option value="slack">Slack</option>
+            <option value="discord">Discord</option>
+          </select>
+          <label style="font:400 11px var(--font);color:var(--text-1);display:flex;align-items:center;gap:4px"><input type="checkbox" id="webhookEnabled" checked> <span data-i="enabled">Enabled</span></label>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button onclick="saveWebhook()" style="padding:8px 20px;border-radius:8px;border:none;background:var(--accent);color:#fff;font:600 12px var(--font);cursor:pointer" data-i="save">Save</button>
+          <button onclick="testWebhook()" style="padding:8px 20px;border-radius:8px;border:1px solid var(--border-l);background:var(--bg-3);color:var(--text-0);font:600 12px var(--font);cursor:pointer" data-i="testWebhook">Test</button>
+        </div>
+      </div>
     </div>
 
     <div class="card sec" style="max-width:800px;margin-top:16px">

@@ -66,7 +66,12 @@ const I18N = {
     weeklyReport:'周报', monthlyReport:'月报',
     current:'本期', previous:'上期', change:'变化',
     highlights:'亮点', avgDailyCost:'日均成本', topModel:'最活跃模型', mostActiveDay:'最活跃日',
-    savingPotential:'节省潜力'
+    savingPotential:'节省潜力',
+    gitStats:'Git 关联', gitStatsDesc:'每个 commit 的 AI 成本',
+    totalCommits:'总 commit', aiAssistedPct:'AI 辅助率', avgCostPerCommit:'每 commit 成本',
+    webhookConfig:'Webhook 通知', webhookConfigDesc:'通过 Slack、Discord 或 HTTP 接收告警',
+    webhookUrl:'Webhook URL', testWebhook:'测试', enabled:'已启用',
+    commit:'提交', aiCost:'AI 成本'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -127,7 +132,12 @@ const I18N = {
     weeklyReport:'Weekly', monthlyReport:'Monthly',
     current:'Current', previous:'Previous', change:'Change',
     highlights:'Highlights', avgDailyCost:'Avg Daily Cost', topModel:'Top Model', mostActiveDay:'Most Active Day',
-    savingPotential:'Saving potential'
+    savingPotential:'Saving potential',
+    gitStats:'Git Integration', gitStatsDesc:'AI cost per commit',
+    totalCommits:'Total Commits', aiAssistedPct:'AI Assisted', avgCostPerCommit:'Avg Cost/Commit',
+    webhookConfig:'Webhook Notifications', webhookConfigDesc:'Get alerts via Slack, Discord, or HTTP webhook',
+    webhookUrl:'Webhook URL', testWebhook:'Test', enabled:'Enabled',
+    commit:'Commit', aiCost:'AI Cost'
   }
 };
 let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
@@ -212,7 +222,7 @@ function switchSource(src) {
     loadLive(), loadLogs(), loadSess(), loadTools(), loadRhythm(),
     loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(),
     loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget(),
-    loadReport('weekly')
+    loadGitStats(), loadReport('weekly')
   ]).then(() => {
     if (main) {
       main.style.transition = 'opacity .2s ease-in, transform .2s ease-in';
@@ -450,7 +460,7 @@ function switchPage(pageId) {
   // Lazy load
   if (pageId === 'overview') { if (!chA) renderCharts(); loadTodayBreakdown(); loadRatePrediction(); loadInsights(); loadBudget(); }
   if (pageId === 'live') { loadLive(); }
-  if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); loadReport('weekly'); }
+  if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); loadGitStats(); loadReport('weekly'); }
   if (pageId === 'logs') { loadLogs(); loadSess(); loadWebConversations(); }
   if (pageId === 'settings') { loadSettings(); }
 }
@@ -2263,6 +2273,61 @@ async function loadReport(type) {
         </div>` : ''}
     `;
   } catch(e) { console.warn('loadReport:', e); el.innerHTML = ''; }
+}
+
+/* ===== v0.8.0: Git Integration ===== */
+async function loadGitStats() {
+  try {
+    const d = await api('/api/git-stats' + sourceParam('?'));
+    const card = document.getElementById('gitStatsCard');
+    if (!d || !d.commits || !d.commits.length) { if(card) card.style.display='none'; return; }
+    if(card) card.style.display='';
+    const t = I18N[curLang] || I18N.zh;
+    const s = d.summary || {};
+
+    const summaryEl = document.getElementById('gitSummary');
+    if (summaryEl) {
+      summaryEl.innerHTML = `<div class="eff-grid" style="min-width:200px">
+        <div class="eff-stat"><div class="eff-stat-val">${s.total_commits||0}</div><div class="eff-stat-label">${t.totalCommits||'Commits'}</div></div>
+        <div class="eff-stat"><div class="eff-stat-val" style="color:var(--green)">${s.ai_assisted_pct||0}%</div><div class="eff-stat-label">${t.aiAssistedPct||'AI Assisted'}</div></div>
+        <div class="eff-stat"><div class="eff-stat-val" style="color:var(--blue)">$${s.avg_cost_per_commit||0}</div><div class="eff-stat-label">${t.avgCostPerCommit||'Avg/Commit'}</div></div>
+      </div>`;
+    }
+
+    const commitsEl = document.getElementById('gitCommits');
+    if (commitsEl) {
+      commitsEl.innerHTML = `<div class="tw" style="max-height:280px;overflow-y:auto"><table><thead><tr>
+        <th>${t.commit||'Commit'}</th><th>${t.project||'Project'}</th><th style="text-align:right">${t.aiCost||'AI Cost'}</th>
+      </tr></thead><tbody>${d.commits.slice(0,30).map(c => `<tr>
+        <td><span class="mono" style="font-size:10px;color:var(--accent)">${c.hash}</span> <span style="font-size:11px">${c.subject}</span></td>
+        <td style="font-size:10px;color:var(--text-2)">${c.project}</td>
+        <td class="mono" style="text-align:right;color:${c.ai_cost>0?'var(--green)':'var(--text-2)'}">${c.ai_cost>0?'$'+c.ai_cost.toFixed(2):'—'}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+    }
+  } catch(e) { console.warn('loadGitStats:', e); }
+}
+
+/* ===== v0.8.1: Webhook ===== */
+async function saveWebhook() {
+  const url = document.getElementById('webhookUrl')?.value || '';
+  const format = document.getElementById('webhookFormat')?.value || 'generic';
+  const enabled = document.getElementById('webhookEnabled')?.checked ?? true;
+  if (!url) { notyf.error('URL required'); return; }
+  try {
+    await fetch('/api/webhooks', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'save',webhooks:[{url,format,enabled,events:['all']}]})});
+    notyf.success(curLang==='zh'?'Webhook 已保存':'Webhook saved');
+  } catch(e) { notyf.error(curLang==='zh'?'保存失败':'Save failed'); }
+}
+async function testWebhook() {
+  const url = document.getElementById('webhookUrl')?.value || '';
+  if (!url) { notyf.error('URL required'); return; }
+  try {
+    const r = await fetch('/api/webhooks', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'test',url})}).then(r=>r.json());
+    if (r.ok) notyf.success(curLang==='zh'?'测试成功':'Test sent');
+    else notyf.error(r.error||'Failed');
+  } catch(e) { notyf.error(String(e)); }
 }
 
 /* ===== Init ===== */

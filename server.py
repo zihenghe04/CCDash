@@ -1844,6 +1844,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/insights": self.api_insights,
             "/api/budget": self.api_budget_get,
             "/api/report": self.api_report,
+            "/api/git-stats": self.api_git_stats,
             "/api/settings": self.api_settings_get,
         }
 
@@ -1888,6 +1889,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 body = self.rfile.read(content_length)
                 data = json.loads(body.decode("utf-8")) if body else {}
                 self.api_budget_post(data)
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
+        elif path == "/api/webhooks":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length)
+                data = json.loads(body.decode("utf-8")) if body else {}
+                self.api_webhooks_post(data)
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
         else:
@@ -4124,6 +4133,281 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         })
 
 
+    # ============================================================
+    # v0.8.0 — Git Integration Analysis
+    # ============================================================
+    def api_git_stats(self, params):
+        """Correlate git commits with Claude sessions by time window"""
+        project_filter = params.get("project", [""])[0]
+        days = int(params.get("days", ["30"])[0])
+
+        scan = _scan_all_projects()
+        daily = scan.get("daily", {})
+        session_eff = scan.get("session_efficiency", {})
+
+        # Find projects with .git directories
+        git_projects = []
+        if PROJECTS_DIR.exists():
+            for proj_dir in PROJECTS_DIR.iterdir():
+                if not proj_dir.is_dir():
+                    continue
+                fname = friendly_project_name(proj_dir.name)
+                if project_filter and project_filter not in fname:
+                    continue
+                # Reconstruct actual path from dir name by reading cwd from first JSONL
+                actual_path = None
+                for jf in proj_dir.glob("*.jsonl"):
+                    try:
+                        with open(jf, "r", encoding="utf-8", errors="replace") as jfh:
+                            for jline in jfh:
+                                try:
+                                    jevt = json.loads(jline.strip())
+                                    cwd = jevt.get("cwd", "")
+                                    if cwd and Path(cwd).exists():
+                                        actual_path = cwd
+                                        break
+                                except Exception:
+                                    continue
+                    except Exception:
+                        continue
+                    if actual_path:
+                        break
+                if not actual_path:
+                    continue
+                git_dir = Path(actual_path) / ".git"
+                if not git_dir.exists():
+                    continue
+                git_projects.append({"dir_name": proj_dir.name, "friendly": fname, "path": actual_path})
+
+        if not git_projects:
+            self.send_json({"projects": [], "commits": [], "summary": {}})
+            return
+
+        # Get git log for each project
+        cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+        all_commits = []
+
+        for gp in git_projects:
+            try:
+                result = subprocess.run(
+                    ["git", "-C", gp["path"], "log", f"--since={cutoff}",
+                     "--format=%H|%aI|%s", "--no-merges"],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode != 0:
+                    continue
+                for line in result.stdout.strip().split("\n"):
+                    if not line or "|" not in line:
+                        continue
+                    parts = line.split("|", 2)
+                    if len(parts) < 3:
+                        continue
+                    commit_hash, commit_ts, subject = parts
+                    commit_date = commit_ts[:10]
+
+                    # Find Claude cost in a time window around the commit (±2h)
+                    try:
+                        ct = datetime.datetime.fromisoformat(commit_ts)
+                    except Exception:
+                        continue
+                    window_start = (ct - datetime.timedelta(hours=2)).isoformat()
+                    window_end = (ct + datetime.timedelta(minutes=30)).isoformat()
+
+                    # Sum session costs in the window for this project
+                    commit_cost = 0.0
+                    commit_tokens = 0
+                    for sid, se in session_eff.items():
+                        if se.get("project") != gp["friendly"]:
+                            continue
+                        # Rough: attribute proportional cost based on session existence
+                        s_total = se["input"] + se["output"] + se["cache_read"] + se["cache_create"]
+                        if s_total > 0 and se.get("calls", 0) > 0:
+                            # Use daily cost as approximation
+                            dd = daily.get(commit_date, {}).get("tokens", {})
+                            for m, t in dd.items():
+                                commit_cost += _calc_cost(m, t.get("input", 0), t.get("output", 0),
+                                                          t.get("cache_read", 0), t.get("cache_create", 0))
+                            commit_tokens += s_total
+                            break  # Only match once per commit
+
+                    all_commits.append({
+                        "hash": commit_hash[:8],
+                        "date": commit_date,
+                        "timestamp": commit_ts,
+                        "subject": subject[:80],
+                        "project": gp["friendly"],
+                        "ai_cost": round(commit_cost, 4),
+                        "ai_tokens": commit_tokens,
+                    })
+            except Exception:
+                continue
+
+        all_commits.sort(key=lambda c: c["timestamp"], reverse=True)
+
+        # Summary
+        total_commits = len(all_commits)
+        total_ai_cost = sum(c["ai_cost"] for c in all_commits)
+        ai_assisted = sum(1 for c in all_commits if c["ai_cost"] > 0)
+
+        # Daily commit + cost trend
+        daily_git = {}
+        for c in all_commits:
+            d = daily_git.setdefault(c["date"], {"commits": 0, "ai_cost": 0.0})
+            d["commits"] += 1
+            d["ai_cost"] += c["ai_cost"]
+        trend = [{"date": d, "commits": v["commits"], "ai_cost": round(v["ai_cost"], 2)}
+                 for d, v in sorted(daily_git.items())]
+
+        self.send_json({
+            "projects": [gp["friendly"] for gp in git_projects],
+            "commits": all_commits[:100],
+            "trend": trend,
+            "summary": {
+                "total_commits": total_commits,
+                "total_ai_cost": round(total_ai_cost, 2),
+                "ai_assisted_pct": round(ai_assisted / total_commits * 100) if total_commits > 0 else 0,
+                "avg_cost_per_commit": round(total_ai_cost / total_commits, 2) if total_commits > 0 else 0,
+                "projects_count": len(git_projects),
+            },
+        })
+
+    # ============================================================
+    # v0.8.1 — Webhook & Notifications
+    # ============================================================
+    def api_webhooks_post(self, data):
+        """POST /api/webhooks — save webhook config or test"""
+        action = data.get("action", "save")
+
+        if action == "test":
+            url = data.get("url", "")
+            if not url:
+                self.send_json({"error": "URL required"}, 400)
+                return
+            try:
+                payload = json.dumps({
+                    "type": "test",
+                    "message": "CCDash webhook test",
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                }).encode("utf-8")
+                req = urllib.request.Request(url, data=payload,
+                                            headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    self.send_json({"ok": True, "status": resp.status})
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)})
+            return
+
+        # Save webhook config
+        config = _load_config()
+        webhooks = data.get("webhooks", [])
+        config["webhooks"] = webhooks
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            self.send_json({"ok": True})
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
+
+
+# Webhook notification sender (called from background thread)
+_webhook_last_check = {"time": 0}
+WEBHOOK_CHECK_INTERVAL = 300  # 5 minutes
+
+def _check_webhook_triggers():
+    """Background check for webhook trigger conditions"""
+    now = time.time()
+    if now - _webhook_last_check["time"] < WEBHOOK_CHECK_INTERVAL:
+        return
+    _webhook_last_check["time"] = now
+
+    config = _load_config()
+    webhooks = config.get("webhooks", [])
+    if not webhooks:
+        return
+
+    active = [w for w in webhooks if w.get("enabled", True)]
+    if not active:
+        return
+
+    # Check triggers
+    alerts = []
+
+    # Trigger 1: Quota > threshold
+    try:
+        if USAGE_CACHE_FILE.exists():
+            with open(USAGE_CACHE_FILE, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("UTILIZATION="):
+                        util = int(line.split("=", 1)[1])
+                        if util >= 80:
+                            alerts.append({
+                                "type": "quota_warning",
+                                "message": f"⚠️ Quota at {util}% — approaching rate limit",
+                                "severity": "danger" if util >= 95 else "warning",
+                            })
+    except Exception:
+        pass
+
+    # Trigger 2: Budget overrun
+    budget = config.get("budget", {})
+    if budget:
+        try:
+            scan = _scan_all_projects()
+            today_str = datetime.date.today().isoformat()
+            td = scan.get("daily", {}).get(today_str, {}).get("tokens", {})
+            today_cost = sum(_calc_cost(m, t.get("input", 0), t.get("output", 0),
+                                        t.get("cache_read", 0), t.get("cache_create", 0))
+                             for m, t in td.items())
+            daily_limit = budget.get("daily", 0)
+            if daily_limit and today_cost > daily_limit:
+                alerts.append({
+                    "type": "budget_exceeded",
+                    "message": f"💰 Daily budget exceeded: ${today_cost:.2f} / ${daily_limit:.2f}",
+                    "severity": "danger",
+                })
+        except Exception:
+            pass
+
+    # Send alerts
+    for alert in alerts:
+        payload = json.dumps({
+            **alert,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "source": "CCDash",
+        }).encode("utf-8")
+        for w in active:
+            url = w.get("url", "")
+            if not url:
+                continue
+            # Check if this webhook listens to this alert type
+            events = w.get("events", ["all"])
+            if "all" not in events and alert["type"] not in events:
+                continue
+            try:
+                headers = {"Content-Type": "application/json"}
+                # Slack format
+                if "slack" in url.lower() or w.get("format") == "slack":
+                    payload = json.dumps({"text": alert["message"]}).encode("utf-8")
+                # Discord format
+                elif "discord" in url.lower() or w.get("format") == "discord":
+                    payload = json.dumps({"content": alert["message"]}).encode("utf-8")
+                req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+                urllib.request.urlopen(req, timeout=10)
+            except Exception:
+                pass
+
+
+def _webhook_background_loop():
+    """Background thread that periodically checks webhook triggers"""
+    while True:
+        try:
+            _check_webhook_triggers()
+        except Exception:
+            pass
+        time.sleep(WEBHOOK_CHECK_INTERVAL)
+
+
 # ============================================================
 # 启动
 # ============================================================
@@ -4173,6 +4457,11 @@ def main():
     threading.Thread(target=_scan_all_projects, daemon=True).start()
     if _codex_enabled():
         threading.Thread(target=_scan_codex, daemon=True).start()
+    # Webhook background checker
+    config = _load_config()
+    if config.get("webhooks"):
+        threading.Thread(target=_webhook_background_loop, daemon=True).start()
+        print("  📡 Webhook 通知已启用")
 
     server = ThreadedHTTPServer(("127.0.0.1", PORT), DashboardHandler)
     try:
