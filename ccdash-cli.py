@@ -85,27 +85,39 @@ def cmd_top():
         print(dim("  No projects found"))
         return
 
+    # Calculate total tokens for percentage
+    total_tok = sum(p.get("tokens_total", 0) for p in projects) or 1
+
     print()
     print(bold("  📁 Project TOP 5"))
-    print(f"  {dim('─' * 50)}")
+    print(f"  {dim('─' * 60)}")
     for i, p in enumerate(projects[:5], 1):
-        name = p.get("friendly_name", p.get("name", "?"))
+        name = p.get("name", p.get("friendly_name", "?"))
         tok = fmt(p.get("tokens_total", 0))
-        cost = f"${p.get('cost', 0):.2f}"
-        msgs = p.get("messages", 0)
-        pct = p.get("pct", 0)
-        bar = green("█" * max(1, int(pct / 5))) + dim("░" * max(0, 20 - int(pct / 5)))
-        padded_name = bold(name[:28]).ljust(28 + (len(bold('')) - len('')))
-        print(f"  {dim(f'{i}.')} {name:<28s} {bar} {cyan(f'{pct:>4.0f}%')}  {tok:>7s}  {green(cost)}")
+        cost = f"${p.get('cost_usd', 0):.2f}"
+        pct = p.get("tokens_total", 0) / total_tok * 100
+        filled = max(1, int(pct / 5))
+        bar = green("█" * filled) + dim("░" * (20 - filled))
+        print(f"  {dim(f'{i}.')} {name[:28]:<28s} {bar} {cyan(f'{pct:>4.0f}%')}  {tok:>7s}  {green(cost)}")
     print()
 
 
 def cmd_models():
     d = api("/api/models")
-    models = d.get("models", [])
-    if not models:
+    raw = d.get("models", {})
+    if not raw:
         print(dim("  No models found"))
         return
+
+    # models can be dict {name: data} or list [{model, ...}]
+    if isinstance(raw, dict):
+        models = []
+        for name, data in raw.items():
+            data["model"] = name
+            models.append(data)
+        models.sort(key=lambda m: m.get("cost_usd", 0), reverse=True)
+    else:
+        models = raw
 
     print()
     print(bold("  🤖 Model Usage"))
@@ -115,9 +127,14 @@ def cmd_models():
     for m in models[:10]:
         name = m.get("model", "?").replace("claude-", "")[:28]
         calls = m.get("calls", 0)
-        tok = fmt(m.get("total_tokens", m.get("input", 0) + m.get("output", 0) + m.get("cache_read", 0) + m.get("cache_create", 0)))
-        cost = f"${m.get('cost', 0):.2f}"
-        hit = f"{m.get('hit_rate', 0):.0f}%"
+        inp = m.get("input", 0)
+        out = m.get("output", 0)
+        cr = m.get("cache_read", 0)
+        cc = m.get("cache_create", 0)
+        tok = fmt(inp + out + cr + cc)
+        cost = f"${m.get('cost_usd', 0):.2f}"
+        all_in = inp + cr + cc
+        hit = f"{cr / all_in * 100:.0f}%" if all_in > 0 else "—"
         print(f"  {name:<30s} {calls:>6d} {tok:>8s} {green(cost):>10s} {cyan(hit):>5s}")
     print()
 
@@ -159,7 +176,9 @@ def cmd_live():
     print(f"  {'Time':<8s} {'Model':<20s} {'↓In':>7s} {'↑Out':>7s} {'⟲Cache':>8s} {'Cost':>8s}")
     print(f"  {dim('─' * 70)}")
     for call in calls[:15]:
-        ts = call.get("timestamp", "")[-8:]  # HH:MM:SS
+        raw_ts = call.get("timestamp", "")
+        # Extract HH:MM from ISO timestamp like "2026-03-27T15:49:49.722Z"
+        ts = raw_ts[11:16] if len(raw_ts) > 16 else raw_ts[-8:]
         model = call.get("model", "?").replace("claude-", "")[:18]
         inp = fmt(call.get("input_tokens", 0))
         out = fmt(call.get("output_tokens", 0))
