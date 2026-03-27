@@ -54,6 +54,13 @@ You're paying for a Claude subscription. But do you actually know:
 | **Data export** (CSV/JSON) | ✅ | ❌ | ✅ | ❌ | ✅ |
 | Day/week **comparison** | ✅ | ❌ | ❌ | ❌ | ✅ |
 | Daily trend & heatmap | ✅ | ❌ | ✅ | ✅ | ✅ |
+| **MCP server** analytics | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Rate limit predictor** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Cost optimization** insights | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Token budget** management | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Git integration** (AI cost/commit) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Webhook** alerts | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **CLI tool** (`ccdash-cli.py`) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Self-hosted / zero deps | ✅ | — | ❌ | ❌ | ❌ |
 
 > **Note**: CCDash is a community project, not affiliated with Anthropic.
@@ -73,6 +80,24 @@ You're paying for a Claude subscription. But do you actually know:
 
 ### ⚡ Rate Limit Predictor
 > **Risk level indicator** (Safe → Critical) · time-to-throttle countdown · safe RPM suggestion · multi-window burn rates (5m/15m/30m/60m) · auto-hidden when no quota data
+
+### 💡 Smart Insights
+> **Cost optimization suggestions** — model downgrade (Opus → Sonnet savings), cache optimization, cost anomaly detection, peak hour warning · rule-driven, no LLM dependency · savings estimates in USD
+
+### 💰 Token Budget
+> Set **daily/weekly/monthly cost limits** in Settings · real-time progress bars on Overview · alert thresholds (OK → Warning 60% → Danger 80% → Over 100%) · gradient fills with pulse animation on over-budget
+
+### 📊 Comparison Reports
+> **Weekly & monthly reports** — this period vs last period · delta percentages with ↑↓ arrows · highlights (top model, cache rate, avg daily cost, most active day)
+
+### 🔗 Git Integration
+> **Per-commit AI cost** — correlates git commits with Claude sessions · AI-assisted percentage · avg cost per commit · commit table on Analytics page
+
+### 🔔 Webhook Notifications
+> **Slack / Discord / HTTP** webhook alerts · background monitoring for quota >80% and budget overruns · test button to verify connectivity · auto-detect Slack/Discord format
+
+### ⌨️ CLI Quick Command
+> **`ccdash-cli.py`** — check usage from terminal · `status` / `top` / `models` / `budget` / `live` · colored output · `--server URL` for remote · zero dependencies
 
 ### 📋 Session Detail
 > Click any session to open a full conversation timeline modal · user prompts & assistant responses with tool call badges · file operations tracking · session chain visualization (all sessions in the same project) · copy Session ID / `claude --resume` command · privacy mode to blur sensitive content
@@ -251,6 +276,7 @@ Projects from remote servers are tagged with `CLOUD` badges in the dashboard.
 CCDash/
 ├── 🐍 server.py            # Dashboard backend (Python stdlib)
 ├── 📡 agent.py             # Remote monitoring agent
+├── ⌨️ ccdash-cli.py        # CLI quick-check tool
 ├── 🍎 fetch-usage.swift    # macOS quota fetcher
 ├── 🔧 config.example.json  # Config template
 ├── 🚀 start.sh             # One-click launcher
@@ -258,6 +284,8 @@ CCDash/
 │   ├── index.html          # SPA shell
 │   ├── style.css           # Dark slate + emerald theme
 │   └── app.js              # All frontend logic
+├── 📊 docs/                # GitHub Pages demo site
+├── 🗺️ ROADMAP.md           # Iteration roadmap
 ├── 🖼️ screenshot/
 ├── 📄 LICENSE              # MIT
 └── 📖 README.md
