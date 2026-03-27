@@ -1845,6 +1845,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/budget": self.api_budget_get,
             "/api/report": self.api_report,
             "/api/git-stats": self.api_git_stats,
+            "/api/accounts": self.api_accounts,
+            "/api/plugins": self.api_plugins,
             "/api/settings": self.api_settings_get,
         }
 
@@ -4307,6 +4309,92 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True})
         except Exception as e:
             self.send_json({"error": str(e)}, 500)
+
+    # ============================================================
+    # v0.9.0 — Multi-Account Support
+    # ============================================================
+    def api_accounts(self, params):
+        """Get all configured accounts with their quota status"""
+        config = _load_config()
+        accounts = config.get("accounts", [])
+        if not accounts:
+            sk = config.get("claude_session_key", "")
+            oid = config.get("claude_org_id", "")
+            if sk and oid:
+                accounts = [{"name": "Default", "session_key": sk, "org_id": oid}]
+            else:
+                self.send_json({"accounts": [], "configured": False})
+                return
+        results = []
+        for acc in accounts:
+            name = acc.get("name", "Account")
+            sk = acc.get("session_key", "")
+            oid = acc.get("org_id", "")
+            quota = {"utilization": 0, "error": None}
+            if sk and oid:
+                swift_path = DASHBOARD_DIR / "fetch-usage.swift"
+                if swift_path.exists():
+                    try:
+                        env = os.environ.copy()
+                        env["CLAUDE_SESSION_KEY"] = sk
+                        env["CLAUDE_ORG_ID"] = oid
+                        result = subprocess.run(
+                            ["swift", str(swift_path)],
+                            capture_output=True, text=True, timeout=15,
+                            cwd=str(DASHBOARD_DIR), env=env
+                        )
+                        if result.returncode == 0 and result.stdout.strip():
+                            quota = json.loads(result.stdout.strip())
+                        else:
+                            quota["error"] = result.stderr.strip() or "unknown"
+                    except Exception as e:
+                        quota["error"] = str(e)
+            results.append({
+                "name": name,
+                "org_id_masked": oid[:8] + "..." if len(oid) > 8 else oid,
+                "quota": quota,
+            })
+        self.send_json({"accounts": results, "configured": True})
+
+    # ============================================================
+    # v0.9.2 — Plugin System
+    # ============================================================
+    def api_plugins(self, params):
+        """List discovered plugins and their status"""
+        plugins_dir = DASHBOARD_DIR / "plugins"
+        plugins = []
+        plugins.append({"name": "Claude Code", "type": "builtin", "enabled": True,
+                         "status": "active" if PROJECTS_DIR.exists() else "no_data",
+                         "description": "Claude Code CLI session data from ~/.claude/"})
+        plugins.append({"name": "Codex CLI", "type": "builtin", "enabled": _codex_enabled(),
+                         "status": "active" if _codex_enabled() else "not_detected",
+                         "description": "OpenAI Codex CLI data from ~/.codex/"})
+        if plugins_dir.exists():
+            for pf in sorted(plugins_dir.glob("*.py")):
+                if pf.name.startswith("_"):
+                    continue
+                meta = {"name": pf.stem, "description": "", "version": ""}
+                try:
+                    with open(pf, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("# name:"):
+                                meta["name"] = line.split(":", 1)[1].strip()
+                            elif line.startswith("# description:"):
+                                meta["description"] = line.split(":", 1)[1].strip()
+                            elif line.startswith("# version:"):
+                                meta["version"] = line.split(":", 1)[1].strip()
+                            elif not line.startswith("#"):
+                                break
+                except Exception:
+                    pass
+                config = _load_config()
+                plugin_cfg = config.get("plugins", {}).get(pf.stem, {})
+                enabled = plugin_cfg.get("enabled", False)
+                plugins.append({"name": meta["name"], "type": "custom", "file": pf.name,
+                                 "enabled": enabled, "status": "active" if enabled else "disabled",
+                                 "description": meta["description"], "version": meta["version"]})
+        self.send_json({"plugins": plugins, "plugins_dir": str(plugins_dir)})
 
 
 # Webhook notification sender (called from background thread)
