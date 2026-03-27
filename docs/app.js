@@ -50,7 +50,13 @@ const I18N = {
     claudeCode:'Claude Code', codexCli:'Codex CLI',
     sourceCodex:'Codex', sourceClaude:'Claude',
     webConversations:'Web & 客户端', webConversationsDesc:'来自网页版、桌面客户端和 SDK 的会话',
-    todayBreakdown:'今日模型消耗', todayBreakdownDesc:'按模型统计今日调用次数、Token 和成本'
+    todayBreakdown:'今日模型消耗', todayBreakdownDesc:'按模型统计今日调用次数、Token 和成本',
+    mcpServers:'MCP 服务器', mcpServersDesc:'按服务器统计 MCP 工具使用', mcpTrend:'MCP 趋势', mcpTrendDesc:'内置工具 vs MCP 工具每日使用趋势',
+    ratePredict:'限速预测', riskLevel:'风险等级', timeToThrottle:'预计限速', currentRpm:'当前 RPM (30m)', currentTpm:'当前 TPM (30m)', safeRpm:'安全 RPM',
+    efficiency:'Prompt 效率', efficiencyDesc:'输出比率、缓存评级与交互模式分类', effTrend:'效率趋势', effTrendDesc:'每日输出比率与缓存命中率',
+    outputRatio:'输出比率', cacheGrade:'缓存评级', sessionsAnalyzed:'分析会话数', interactionModes:'交互模式',
+    modeExploration:'探索', modeBuilding:'构建', modeDebugging:'调试', modeReview:'审查',
+    builtinTools:'内置工具', mcpTools:'MCP 工具'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -95,7 +101,13 @@ const I18N = {
     claudeCode:'Claude Code', codexCli:'Codex CLI',
     sourceCodex:'Codex', sourceClaude:'Claude',
     webConversations:'Web & Desktop', webConversationsDesc:'Conversations from web, desktop app & SDK',
-    todayBreakdown:"Today's Cost by Model", todayBreakdownDesc:'Per-model calls, tokens and cost for today'
+    todayBreakdown:"Today's Cost by Model", todayBreakdownDesc:'Per-model calls, tokens and cost for today',
+    mcpServers:'MCP Servers', mcpServersDesc:'MCP tool usage by server', mcpTrend:'MCP Trend', mcpTrendDesc:'Built-in vs MCP tool usage over time',
+    ratePredict:'Rate Limit Prediction', riskLevel:'Risk Level', timeToThrottle:'Time to Throttle', currentRpm:'Current RPM (30m)', currentTpm:'Current TPM (30m)', safeRpm:'Safe RPM',
+    efficiency:'Prompt Efficiency', efficiencyDesc:'Output ratio, cache grade & interaction modes', effTrend:'Efficiency Trend', effTrendDesc:'Daily output ratio & cache rate',
+    outputRatio:'Output Ratio', cacheGrade:'Cache Grade', sessionsAnalyzed:'Sessions Analyzed', interactionModes:'Interaction Modes',
+    modeExploration:'Exploration', modeBuilding:'Building', modeDebugging:'Debugging', modeReview:'Review',
+    builtinTools:'Built-in Tools', mcpTools:'MCP Tools'
   }
 };
 let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
@@ -2423,10 +2435,11 @@ async function loadMcpTrend() {
     const d = await api('/api/mcp-trend?days=30');
     if (!d || !d.tool_type_trend || !d.tool_type_trend.length) return;
     const dk = document.body.dataset.theme === 'dark';
+    const t = I18N[curLang] || I18N.zh;
     if (chMcpTrend) chMcpTrend.destroy();
     chMcpTrend = new ApexCharts(document.getElementById('chartMcpTrend'), {
       chart:{type:'area',height:220,background:'transparent',foreColor:dk?'#94a3b8':'#64748b',toolbar:{show:false},zoom:{enabled:false}},
-      series:[{name:'Built-in Tools',data:d.tool_type_trend.map(t=>t.builtin)},{name:'MCP Tools',data:d.tool_type_trend.map(t=>t.mcp)}],
+      series:[{name:t.builtinTools||'Built-in Tools',data:d.tool_type_trend.map(t=>t.builtin)},{name:t.mcpTools||'MCP Tools',data:d.tool_type_trend.map(t=>t.mcp)}],
       xaxis:{categories:d.tool_type_trend.map(t=>t.date.slice(5)),labels:{style:{fontSize:'10px'}},tickAmount:8},
       yaxis:{labels:{style:{fontSize:'10px'},formatter:v=>fmt(v)}},
       colors:['#4ade80','#00e5ff'],
@@ -2451,13 +2464,14 @@ async function loadRatePrediction() {
     const badge = document.getElementById('riskBadge');
     if (badge) {
       const riskMap = {safe:'risk-safe',caution:'risk-caution',warning:'risk-warning',danger:'risk-danger',critical:'risk-critical'};
+      const riskLabelsZh = {safe:'安全',caution:'注意',warning:'警告',danger:'危险',critical:'紧急'};
       badge.className = riskMap[d.risk] || 'risk-safe';
-      badge.textContent = (d.risk||'safe').toUpperCase();
+      badge.textContent = curLang==='zh' ? (riskLabelsZh[d.risk]||d.risk) : (d.risk||'safe').toUpperCase();
     }
     const ttEl = document.getElementById('rpTimeLeft');
     if (ttEl) {
       if (d.minutes_to_throttle == null) { ttEl.textContent = '∞'; ttEl.style.color = 'var(--green)'; }
-      else if (d.minutes_to_throttle <= 0) { ttEl.textContent = 'NOW'; ttEl.style.color = 'var(--red)'; }
+      else if (d.minutes_to_throttle <= 0) { ttEl.textContent = curLang==='zh'?'已限速':'NOW'; ttEl.style.color = 'var(--red)'; }
       else { const h = Math.floor(d.minutes_to_throttle/60), m = d.minutes_to_throttle%60; ttEl.textContent = h>0?`${h}h ${m}m`:`${m}m`; ttEl.style.color = d.minutes_to_throttle<30?'var(--red)':d.minutes_to_throttle<60?'var(--orange)':'var(--green)'; }
     }
     const brEl = document.getElementById('rpBurnRpm'); if(brEl) brEl.textContent = d.burn_rpm_30m||'0';
@@ -2475,17 +2489,20 @@ async function loadEfficiency() {
     const panel = document.getElementById('efficiencyPanel');
     if (!panel) return;
     const g = d.global||{}, modes = d.modes||{};
+    const t = I18N[curLang] || I18N.zh;
     const modeColors = {exploration:'#38bdf8',building:'#4ade80',debugging:'#f97316',review:'#a78bfa'};
-    const modeLabels = {exploration:'Exploration',building:'Building',debugging:'Debugging',review:'Review'};
+    const modeLabels = {exploration:t.modeExploration||'Exploration',building:t.modeBuilding||'Building',debugging:t.modeDebugging||'Debugging',review:t.modeReview||'Review'};
     const modePct = modes.percentages||{}, modeCounts = modes.counts||{};
     const gradeColors = {Excellent:'var(--green)',Good:'var(--blue)',Fair:'var(--orange)',Poor:'var(--red)'};
+    const gradeLabelsZh = {Excellent:'优秀',Good:'良好',Fair:'一般',Poor:'较差'};
+    const gradeDisplay = curLang==='zh' ? (gradeLabelsZh[g.cache_grade]||g.cache_grade||'—') : (g.cache_grade||'—');
     panel.innerHTML = `
       <div class="eff-grid">
-        <div class="eff-stat"><div class="eff-stat-val" style="color:var(--blue)">${g.output_ratio||0}%</div><div class="eff-stat-label">Output Ratio</div></div>
-        <div class="eff-stat"><div class="eff-stat-val" style="color:${gradeColors[g.cache_grade]||'var(--text-0)'}">${g.cache_rate||0}%</div><div class="eff-stat-label">Cache Rate (${g.cache_grade||'—'})</div></div>
-        <div class="eff-stat"><div class="eff-stat-val">${g.total_sessions_analyzed||0}</div><div class="eff-stat-label">Sessions</div></div>
+        <div class="eff-stat"><div class="eff-stat-val" style="color:var(--blue)">${g.output_ratio||0}%</div><div class="eff-stat-label">${t.outputRatio||'Output Ratio'}</div></div>
+        <div class="eff-stat"><div class="eff-stat-val" style="color:${gradeColors[g.cache_grade]||'var(--text-0)'}">${g.cache_rate||0}%</div><div class="eff-stat-label">${t.cacheGrade||'Cache Grade'} (${gradeDisplay})</div></div>
+        <div class="eff-stat"><div class="eff-stat-val">${g.total_sessions_analyzed||0}</div><div class="eff-stat-label">${t.sessionsAnalyzed||'Sessions'}</div></div>
       </div>
-      <div style="font:600 11px var(--font);color:var(--text-1);margin-bottom:6px">Interaction Modes</div>
+      <div style="font:600 11px var(--font);color:var(--text-1);margin-bottom:6px">${t.interactionModes||'Interaction Modes'}</div>
       <div class="eff-mode-bar">${Object.entries(modePct).filter(([,v])=>v>0).map(([k,v])=>`<div style="width:${v}%;background:${modeColors[k]||'#6b7280'}" title="${modeLabels[k]||k} ${v}%"></div>`).join('')}</div>
       <div class="eff-mode-legend">${Object.entries(modePct).map(([k,v])=>`<div class="eff-mode-item"><span class="eff-mode-dot" style="background:${modeColors[k]||'#6b7280'}"></span>${modeLabels[k]||k} <span class="mono" style="font-size:10px">${v}%</span> <span style="color:var(--text-2)">(${modeCounts[k]||0})</span></div>`).join('')}</div>`;
     const trend = d.trend||[];
@@ -2494,7 +2511,7 @@ async function loadEfficiency() {
       if (chEffTrend) chEffTrend.destroy();
       chEffTrend = new ApexCharts(document.getElementById('chartEffTrend'), {
         chart:{type:'line',height:220,background:'transparent',foreColor:dk?'#94a3b8':'#64748b',toolbar:{show:false},zoom:{enabled:false}},
-        series:[{name:'Output Ratio %',data:trend.map(t=>t.output_ratio)},{name:'Cache Rate %',data:trend.map(t=>t.cache_rate)}],
+        series:[{name:(t.outputRatio||'Output Ratio')+' %',data:trend.map(t=>t.output_ratio)},{name:(t.cacheRate||'Cache Rate')+' %',data:trend.map(t=>t.cache_rate)}],
         xaxis:{categories:trend.map(t=>t.date.slice(5)),labels:{style:{fontSize:'10px'}},tickAmount:8},
         yaxis:{min:0,max:100,labels:{style:{fontSize:'10px'},formatter:v=>v+'%'}},
         colors:['#3b82f6','#22c55e'],stroke:{curve:'smooth',width:2},dataLabels:{enabled:false},
