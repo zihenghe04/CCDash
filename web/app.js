@@ -210,7 +210,8 @@ function switchSource(src) {
   Promise.all([
     loadOverview(), loadCharts(), loadModels(), loadProjects(),
     loadLive(), loadLogs(), loadSess(), loadTools(), loadRhythm(),
-    loadTodayBreakdown()
+    loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(),
+    loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget()
   ]).then(() => {
     if (main) {
       main.style.transition = 'opacity .2s ease-in, transform .2s ease-in';
@@ -1084,7 +1085,7 @@ function renderSessionsData(d) {
 async function loadSess() {
   const f = document.getElementById('sFilt').value;
   const q = document.getElementById('sSearch').value.trim();
-  let url = '/api/sessions?limit=40';
+  let url = '/api/sessions?limit=40' + sourceParam();
   if (f) url += `&project=${encodeURIComponent(f)}`;
   if (q) url += `&q=${encodeURIComponent(q)}`;
   const d = await api(url);
