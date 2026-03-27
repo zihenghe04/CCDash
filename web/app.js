@@ -462,7 +462,7 @@ function switchPage(pageId) {
   const pt = document.getElementById('pageTitle');
   if (pt && titleMap[pageId]) pt.textContent = t[titleMap[pageId]] || pageId;
   // Lazy load
-  if (pageId === 'overview') { if (!chA) renderCharts(); loadTodayBreakdown(); loadRatePrediction(); loadInsights(); loadBudget(); }
+  if (pageId === 'overview') { loadOverview(); if (!chA) renderCharts(); loadTodayBreakdown(); loadRatePrediction(); loadInsights(); loadBudget(); }
   if (pageId === 'live') { loadLive(); }
   if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); loadGitStats(); loadReport('weekly'); }
   if (pageId === 'logs') { loadLogs(); loadSess(); loadWebConversations(); }
@@ -1339,6 +1339,7 @@ function exportData(format) {
   if (end) url += `&end=${encodeURIComponent(new Date(end).toISOString())}`;
   if (model) url += `&model=${encodeURIComponent(model)}`;
   if (project) url += `&project=${encodeURIComponent(project)}`;
+  url += sourceParam();
   window.open(url, '_blank');
 }
 
@@ -2440,7 +2441,7 @@ async function refreshAll() {
   document.getElementById('lastUp').textContent = curLang==='zh' ? '刷新中...' : 'Refreshing...';
   try {
     await api('/api/overview?refresh=1' + sourceParam());
-    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations(), loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget()]);
+    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations(), loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget(), loadRhythm(), loadGitStats(), loadReport('weekly')]);
     notyf.success(curLang==='zh' ? '已更新' : 'Updated');
   } catch { notyf.error(curLang==='zh' ? '刷新失败' : 'Refresh failed'); }
   document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});

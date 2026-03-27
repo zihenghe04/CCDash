@@ -878,6 +878,20 @@ async function api(p) {
     };
   }
 
+  if (path === 'accounts') return {
+    accounts:[{name:'Personal',org_id_masked:'02679b90...',quota:{five_hour:{utilization:32},seven_day:{utilization:18}}}],
+    configured:true
+  };
+
+  if (path === 'plugins') return {
+    plugins:[
+      {name:'Claude Code',type:'builtin',enabled:true,status:'active',description:'Claude Code CLI session data from ~/.claude/'},
+      {name:'Codex CLI',type:'builtin',enabled:true,status:'active',description:'OpenAI Codex CLI data from ~/.codex/'},
+      {name:'Example Plugin',type:'custom',file:'example_plugin',enabled:false,status:'disabled',description:'A template showing the plugin interface',version:'0.1'}
+    ],
+    plugins_dir:'/Users/demo/.claude/dashboard/plugins'
+  };
+
   if (path === 'git-stats') return {
     projects:['CCDash','SEU-Thesis-LaTeX'],
     commits:[
@@ -955,7 +969,7 @@ function switchPage(pageId) {
   if (pageId === 'live') { loadLive(); }
   if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); loadGitStats(); loadReport('weekly'); }
   if (pageId === 'logs') { loadLogs(); loadSess(); loadWebConversations(); }
-  if (pageId === 'settings') { loadSettings(); }
+  if (pageId === 'settings') { loadSettings(); loadAccounts(); loadPlugins(); }
 }
 
 function moveNavSlider(activeEl) {

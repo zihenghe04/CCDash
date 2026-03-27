@@ -135,7 +135,8 @@ def cmd_models():
         cost = f"${m.get('cost_usd', 0):.2f}"
         all_in = inp + cr + cc
         hit = f"{cr / all_in * 100:.0f}%" if all_in > 0 else "—"
-        print(f"  {name:<30s} {calls:>6d} {tok:>8s} {green(cost):>10s} {cyan(hit):>5s}")
+        # Pad BEFORE coloring to avoid ANSI codes breaking alignment
+        print(f"  {name:<30s} {calls:>6d} {tok:>8s} {cost:>10s} {hit:>5s}")
     print()
 
 
