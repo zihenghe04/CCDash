@@ -178,7 +178,7 @@ function switchSource(src) {
   Promise.all([
     loadOverview(), loadCharts(), loadModels(), loadProjects(),
     loadLive(), loadLogs(), loadSess(), loadTools(), loadRhythm(),
-    loadTodayBreakdown()
+    loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency()
   ]).then(() => {
     if (main) {
       main.style.transition = 'opacity .2s ease-in, transform .2s ease-in';
@@ -754,6 +754,48 @@ async function api(p) {
     };
   }
 
+  if (path === 'mcp-stats') return {
+    servers: [
+      { name:'playwright', calls:87, sessions:4, top_tools:[{name:'mcp__playwright__browser_navigate',calls:32},{name:'mcp__playwright__browser_click',calls:28},{name:'mcp__playwright__browser_snapshot',calls:15}] },
+      { name:'chrome-devtools', calls:45, sessions:3, top_tools:[{name:'mcp__chrome-devtools__take_screenshot',calls:18},{name:'mcp__chrome-devtools__evaluate_script',calls:15}] },
+      { name:'web-search', calls:23, sessions:6, top_tools:[{name:'mcp__web-search__search',calls:23}] },
+      { name:'slack', calls:12, sessions:2, top_tools:[{name:'mcp__slack__send_message',calls:8},{name:'mcp__slack__list_channels',calls:4}] },
+    ],
+    total_calls: 167, total_servers: 4
+  };
+
+  if (path === 'mcp-trend') {
+    const days = parseInt(params.get('days')) || 30;
+    const trend = []; const ttt = [];
+    for (let i = days; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i); const ds = d.toISOString().slice(0,10);
+      const b = 40 + Math.floor(Math.random()*30);
+      const m = 10 + Math.floor(Math.random()*20);
+      trend.push({date:ds, playwright:Math.floor(m*0.5), 'chrome-devtools':Math.floor(m*0.3), 'web-search':Math.floor(m*0.2)});
+      ttt.push({date:ds, builtin:b, mcp:m});
+    }
+    return { trend, servers:['playwright','chrome-devtools','web-search'], tool_type_trend:ttt };
+  }
+
+  if (path === 'rate-prediction') return {
+    utilization:45, remaining_pct:55, resets_at:'2026-03-27T18:30:00Z', profile:'Claude Code MAX 20',
+    rates:{
+      '5m':{calls:3,tokens:125000,rpm:0.6,tpm:25000},
+      '15m':{calls:8,tokens:380000,rpm:0.5,tpm:25333},
+      '30m':{calls:14,tokens:720000,rpm:0.5,tpm:24000},
+      '60m':{calls:22,tokens:1100000,rpm:0.4,tpm:18333}
+    },
+    minutes_to_throttle:165, risk:'caution', safe_rpm:0.8, burn_rpm_30m:0.5, burn_tpm_30m:24000
+  };
+
+  if (path === 'efficiency') return {
+    global:{output_ratio:6.8, cache_rate:72.4, cache_grade:'Good', total_sessions_analyzed:92},
+    modes:{counts:{exploration:28,building:35,debugging:18,review:11},percentages:{exploration:30,building:38,debugging:20,review:12},tokens:{exploration:45000000,building:82000000,debugging:52000000,review:21000000}},
+    top_efficient:[{session_id:'demo-top-1',project:'CCDash',calls:8,tool_calls:12,total_tokens:450000,output_tokens:85000,efficiency:18.9,mode:'building',cache_rate:68}],
+    least_efficient:[{session_id:'demo-low-1',project:'SEU-Thesis',calls:3,tool_calls:0,total_tokens:890000,output_tokens:12000,efficiency:1.3,mode:'review',cache_rate:92}],
+    trend: Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-29+i);return {date:d.toISOString().slice(0,10),output_ratio:5+Math.random()*8,cache_rate:55+Math.random()*30}})
+  };
+
   if (path === 'export') return null; // export not available in demo
 
   console.warn('Demo API: unhandled path', path);
@@ -814,9 +856,9 @@ function switchPage(pageId) {
   const pt = document.getElementById('pageTitle');
   if (pt && titleMap[pageId]) pt.textContent = t[titleMap[pageId]] || pageId;
   // Lazy load
-  if (pageId === 'overview') { if (!chA) renderCharts(); loadTodayBreakdown(); }
+  if (pageId === 'overview') { if (!chA) renderCharts(); loadTodayBreakdown(); loadRatePrediction(); }
   if (pageId === 'live') { loadLive(); }
-  if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); }
+  if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); }
   if (pageId === 'logs') { loadLogs(); loadSess(); loadWebConversations(); }
   if (pageId === 'settings') { loadSettings(); }
 }
@@ -2345,6 +2387,127 @@ async function showWebConversation(uuid) {
   </div>`;
 }
 
+/* ===== v0.6.0: MCP Server Analytics ===== */
+let chMcp, chMcpTrend;
+const MCP_COLORS = ['#00e5ff','#4ade80','#f97316','#a78bfa','#f472b6','#facc15','#38bdf8','#fb923c','#818cf8','#34d399'];
+async function loadMcpStats() {
+  try {
+    const d = await api('/api/mcp-stats');
+    if (!d || !d.servers || !d.servers.length) { const el = document.getElementById('chartMcp'); if(el) el.closest('.card')?.style.setProperty('display','none'); return; }
+    const el = document.getElementById('chartMcp'); if(el) el.closest('.card')?.style.removeProperty('display');
+    const labels = d.servers.map(s => s.name);
+    const series = d.servers.map(s => s.calls);
+    const colors = d.servers.map((_,i) => MCP_COLORS[i % MCP_COLORS.length]);
+    const dk = document.body.dataset.theme === 'dark';
+    if (chMcp) chMcp.destroy();
+    chMcp = new ApexCharts(document.getElementById('chartMcp'), {
+      chart:{type:'donut',height:190,background:'transparent',foreColor:dk?'#a1a1aa':'#71717a'},
+      series, labels, colors,
+      plotOptions:{pie:{donut:{size:'60%',labels:{show:true,name:{show:false},value:{show:true,fontSize:'15px',fontWeight:700,fontFamily:'JetBrains Mono',color:dk?'#e2e8f0':'#09090b',formatter:()=>fmt(d.total_calls)},total:{show:true,label:'Total',formatter:()=>fmt(d.total_calls)}}}}},
+      dataLabels:{enabled:false},legend:{show:false},stroke:{width:0},
+      theme:apexTheme(),
+      tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>fmt(v)+' calls'}}
+    });
+    chMcp.render();
+    const listEl = document.getElementById('mcpList');
+    if (listEl) {
+      listEl.innerHTML = d.servers.slice(0,8).map((s,i) => {
+        const c = MCP_COLORS[i % MCP_COLORS.length];
+        return `<div style="display:flex;align-items:center;gap:6px;margin:3px 0"><span style="width:8px;height:8px;border-radius:50%;background:${c};flex-shrink:0"></span><span style="font-size:11px;flex:1">${s.name}</span><span class="mono" style="font-size:10px;color:var(--fg-2)">${fmt(s.calls)}</span><span style="font-size:9px;color:var(--fg-3)">${s.sessions}s</span></div>`;
+      }).join('');
+    }
+  } catch(e) { console.warn('loadMcpStats:', e); }
+}
+async function loadMcpTrend() {
+  try {
+    const d = await api('/api/mcp-trend?days=30');
+    if (!d || !d.tool_type_trend || !d.tool_type_trend.length) return;
+    const dk = document.body.dataset.theme === 'dark';
+    if (chMcpTrend) chMcpTrend.destroy();
+    chMcpTrend = new ApexCharts(document.getElementById('chartMcpTrend'), {
+      chart:{type:'area',height:220,background:'transparent',foreColor:dk?'#94a3b8':'#64748b',toolbar:{show:false},zoom:{enabled:false}},
+      series:[{name:'Built-in Tools',data:d.tool_type_trend.map(t=>t.builtin)},{name:'MCP Tools',data:d.tool_type_trend.map(t=>t.mcp)}],
+      xaxis:{categories:d.tool_type_trend.map(t=>t.date.slice(5)),labels:{style:{fontSize:'10px'}},tickAmount:8},
+      yaxis:{labels:{style:{fontSize:'10px'},formatter:v=>fmt(v)}},
+      colors:['#4ade80','#00e5ff'],
+      fill:{type:'gradient',gradient:{shadeIntensity:1,opacityFrom:.4,opacityTo:.05}},
+      stroke:{curve:'smooth',width:2},dataLabels:{enabled:false},
+      grid:{borderColor:dk?'#1e293b':'#e2e8f0',strokeDashArray:3},
+      tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>fmt(v)+' calls'}},
+      legend:{position:'top',fontSize:'11px',fontFamily:'Inter',labels:{colors:dk?'#94a3b8':'#64748b'}}
+    });
+    chMcpTrend.render();
+  } catch(e) { console.warn('loadMcpTrend:', e); }
+}
+
+/* ===== v0.6.1: Rate Limit Predictor ===== */
+async function loadRatePrediction() {
+  try {
+    const d = await api('/api/rate-prediction');
+    if (!d) return;
+    const card = document.getElementById('ratePredictCard');
+    if (d.utilization <= 0 && d.burn_rpm_30m <= 0) { if(card) card.style.display='none'; return; }
+    if (card) card.style.display = '';
+    const badge = document.getElementById('riskBadge');
+    if (badge) {
+      const riskMap = {safe:'risk-safe',caution:'risk-caution',warning:'risk-warning',danger:'risk-danger',critical:'risk-critical'};
+      badge.className = riskMap[d.risk] || 'risk-safe';
+      badge.textContent = (d.risk||'safe').toUpperCase();
+    }
+    const ttEl = document.getElementById('rpTimeLeft');
+    if (ttEl) {
+      if (d.minutes_to_throttle == null) { ttEl.textContent = '∞'; ttEl.style.color = 'var(--green)'; }
+      else if (d.minutes_to_throttle <= 0) { ttEl.textContent = 'NOW'; ttEl.style.color = 'var(--red)'; }
+      else { const h = Math.floor(d.minutes_to_throttle/60), m = d.minutes_to_throttle%60; ttEl.textContent = h>0?`${h}h ${m}m`:`${m}m`; ttEl.style.color = d.minutes_to_throttle<30?'var(--red)':d.minutes_to_throttle<60?'var(--orange)':'var(--green)'; }
+    }
+    const brEl = document.getElementById('rpBurnRpm'); if(brEl) brEl.textContent = d.burn_rpm_30m||'0';
+    const btEl = document.getElementById('rpBurnTpm'); if(btEl) btEl.textContent = fmt(d.burn_tpm_30m||0);
+    const srEl = document.getElementById('rpSafeRpm'); if(srEl) { srEl.textContent = d.safe_rpm?d.safe_rpm.toFixed(1):'—'; srEl.style.color='var(--green)'; }
+  } catch(e) { console.warn('loadRatePrediction:', e); }
+}
+
+/* ===== v0.6.2: Efficiency Analysis ===== */
+let chEffTrend;
+async function loadEfficiency() {
+  try {
+    const d = await api('/api/efficiency');
+    if (!d) return;
+    const panel = document.getElementById('efficiencyPanel');
+    if (!panel) return;
+    const g = d.global||{}, modes = d.modes||{};
+    const modeColors = {exploration:'#38bdf8',building:'#4ade80',debugging:'#f97316',review:'#a78bfa'};
+    const modeLabels = {exploration:'Exploration',building:'Building',debugging:'Debugging',review:'Review'};
+    const modePct = modes.percentages||{}, modeCounts = modes.counts||{};
+    const gradeColors = {Excellent:'var(--green)',Good:'var(--blue)',Fair:'var(--orange)',Poor:'var(--red)'};
+    panel.innerHTML = `
+      <div class="eff-grid">
+        <div class="eff-stat"><div class="eff-stat-val" style="color:var(--blue)">${g.output_ratio||0}%</div><div class="eff-stat-label">Output Ratio</div></div>
+        <div class="eff-stat"><div class="eff-stat-val" style="color:${gradeColors[g.cache_grade]||'var(--text-0)'}">${g.cache_rate||0}%</div><div class="eff-stat-label">Cache Rate (${g.cache_grade||'—'})</div></div>
+        <div class="eff-stat"><div class="eff-stat-val">${g.total_sessions_analyzed||0}</div><div class="eff-stat-label">Sessions</div></div>
+      </div>
+      <div style="font:600 11px var(--font);color:var(--text-1);margin-bottom:6px">Interaction Modes</div>
+      <div class="eff-mode-bar">${Object.entries(modePct).filter(([,v])=>v>0).map(([k,v])=>`<div style="width:${v}%;background:${modeColors[k]||'#6b7280'}" title="${modeLabels[k]||k} ${v}%"></div>`).join('')}</div>
+      <div class="eff-mode-legend">${Object.entries(modePct).map(([k,v])=>`<div class="eff-mode-item"><span class="eff-mode-dot" style="background:${modeColors[k]||'#6b7280'}"></span>${modeLabels[k]||k} <span class="mono" style="font-size:10px">${v}%</span> <span style="color:var(--text-2)">(${modeCounts[k]||0})</span></div>`).join('')}</div>`;
+    const trend = d.trend||[];
+    if (trend.length > 0) {
+      const dk = document.body.dataset.theme === 'dark';
+      if (chEffTrend) chEffTrend.destroy();
+      chEffTrend = new ApexCharts(document.getElementById('chartEffTrend'), {
+        chart:{type:'line',height:220,background:'transparent',foreColor:dk?'#94a3b8':'#64748b',toolbar:{show:false},zoom:{enabled:false}},
+        series:[{name:'Output Ratio %',data:trend.map(t=>t.output_ratio)},{name:'Cache Rate %',data:trend.map(t=>t.cache_rate)}],
+        xaxis:{categories:trend.map(t=>t.date.slice(5)),labels:{style:{fontSize:'10px'}},tickAmount:8},
+        yaxis:{min:0,max:100,labels:{style:{fontSize:'10px'},formatter:v=>v+'%'}},
+        colors:['#3b82f6','#22c55e'],stroke:{curve:'smooth',width:2},dataLabels:{enabled:false},
+        grid:{borderColor:dk?'#1e293b':'#e2e8f0',strokeDashArray:3},
+        tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>v+'%'}},
+        legend:{position:'top',fontSize:'11px',fontFamily:'Inter',labels:{colors:dk?'#94a3b8':'#64748b'}},
+        markers:{size:0,hover:{size:4}}
+      });
+      chEffTrend.render();
+    }
+  } catch(e) { console.warn('loadEfficiency:', e); }
+}
+
 /* ===== Init ===== */
 async function init() {
   try {
@@ -2352,7 +2515,8 @@ async function init() {
     await Promise.all([
       loadStatus(), loadOverview(), loadCharts(), loadModels(),
       loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(),
-      loadWebConversations(), loadTodayBreakdown()
+      loadWebConversations(), loadTodayBreakdown(),
+      loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency()
     ]);
     notyf.success(curLang==='zh' ? 'Dashboard 加载完成' : 'Dashboard loaded');
   } catch(e) {
@@ -2374,7 +2538,7 @@ async function refreshAll() {
   document.getElementById('lastUp').textContent = curLang==='zh' ? '刷新中...' : 'Refreshing...';
   try {
     await api('/api/overview?refresh=1' + sourceParam());
-    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations(), loadTodayBreakdown()]);
+    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations(), loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency()]);
     notyf.success(curLang==='zh' ? '已更新' : 'Updated');
   } catch { notyf.error(curLang==='zh' ? '刷新失败' : 'Refresh failed'); }
   document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});

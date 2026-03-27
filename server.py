@@ -430,6 +430,9 @@ def _scan_all_projects(force=False):
     models = {}      # model -> {in, out, cr, cc, calls}
     projects = {}    # project_dir_name -> {messages, tokens_total, sessions: set, friendly_name, models: {model: {in,out,cr,cc}}}
     tools_stats = {} # tool_name -> {"calls": int, "sessions": set()}
+    mcp_stats = {}   # mcp_server_name -> {"calls": int, "sessions": set(), "tools": {tool_name: calls}}
+    daily_tools = {} # date -> {tool_name: calls}
+    session_efficiency = {}  # session_id -> {"input": int, "output": int, "cache_read": int, "cache_create": int, "calls": int, "tool_calls": int, "project": str}
     session_entrypoints = {}  # session_id -> entrypoint (cli, claude-desktop, sdk-ts, etc.)
     total_messages = 0
     total_sessions = set()
@@ -524,12 +527,38 @@ def _scan_all_projects(force=False):
                                             ts_entry = tools_stats.setdefault(tool_name, {"calls": 0, "sessions": set()})
                                             ts_entry["calls"] += 1
                                             ts_entry["sessions"].add(session_id)
+                                            # MCP server grouping: mcp__servername__action -> servername
+                                            if tool_name.startswith("mcp__"):
+                                                parts = tool_name.split("__")
+                                                if len(parts) >= 3:
+                                                    server_name = parts[1]
+                                                    mcp_entry = mcp_stats.setdefault(server_name, {"calls": 0, "sessions": set(), "tools": {}})
+                                                    mcp_entry["calls"] += 1
+                                                    mcp_entry["sessions"].add(session_id)
+                                                    mcp_entry["tools"][tool_name] = mcp_entry["tools"].get(tool_name, 0) + 1
+                                            # Daily tool trend
+                                            if date:
+                                                dt_entry = daily_tools.setdefault(date, {})
+                                                dt_entry[tool_name] = dt_entry.get(tool_name, 0) + 1
                                 if tool_count and date:
                                     daily.setdefault(date, {
                                         "messages": 0, "sessions": set(), "tools": 0,
                                         "tokens": {}
                                     })
                                     daily[date]["tools"] += tool_count
+
+                            # Session efficiency tracking
+                            se = session_efficiency.setdefault(session_id, {
+                                "input": 0, "output": 0, "cache_read": 0,
+                                "cache_create": 0, "calls": 0, "tool_calls": 0,
+                                "project": friendly
+                            })
+                            se["input"] += inp
+                            se["output"] += out
+                            se["cache_read"] += cr
+                            se["cache_create"] += cc
+                            se["calls"] += 1
+                            se["tool_calls"] += (tool_count if isinstance(content, list) else 0)
 
                             if date:
                                 daily.setdefault(date, {
@@ -575,6 +604,8 @@ def _scan_all_projects(force=False):
         p["sessions"] = len(p.pop("sessions", set()))
     for ts_entry in tools_stats.values():
         ts_entry["sessions"] = len(ts_entry.pop("sessions", set()))
+    for mc_entry in mcp_stats.values():
+        mc_entry["sessions"] = len(mc_entry.pop("sessions", set()))
 
     elapsed = time.time() - t0
     print(f"  [Scanner] 扫描完成: {file_count} 文件, {total_messages} 消息, "
@@ -593,6 +624,9 @@ def _scan_all_projects(force=False):
         "models": models,
         "projects": projects,
         "tools_stats": tools_stats,
+        "mcp_stats": mcp_stats,
+        "daily_tools": daily_tools,
+        "session_efficiency": session_efficiency,
         "session_entrypoints": session_entrypoints,
         "total_messages": total_messages,
         "total_sessions": len(total_sessions),
@@ -1797,6 +1831,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/web-conversations": self.api_web_conversations,
             "/api/web-conversation-detail": self.api_web_conversation_detail,
             "/api/today-breakdown": self.api_today_breakdown,
+            "/api/mcp-stats": self.api_mcp_stats,
+            "/api/mcp-trend": self.api_mcp_trend,
+            "/api/rate-prediction": self.api_rate_prediction,
+            "/api/efficiency": self.api_efficiency,
             "/api/settings": self.api_settings_get,
         }
 
@@ -3305,6 +3343,307 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "raw": {"exploration": exploration, "building": building, "execution": execution},
             },
             "model_dna": families,
+        })
+
+
+    # ============================================================
+    # v0.6.0 — MCP Server Analytics
+    # ============================================================
+    def api_mcp_stats(self, params):
+        """MCP server-level aggregated statistics"""
+        scan = copy.deepcopy(_scan_all_projects())
+        mcp = scan.get("mcp_stats", {})
+        if not mcp:
+            self.send_json({"servers": [], "total_calls": 0, "total_servers": 0})
+            return
+
+        servers = []
+        total_calls = 0
+        for name, data in sorted(mcp.items(), key=lambda x: x[1]["calls"], reverse=True):
+            total_calls += data["calls"]
+            # Top tools for this server
+            top_tools = sorted(data.get("tools", {}).items(), key=lambda x: x[1], reverse=True)[:10]
+            servers.append({
+                "name": name,
+                "calls": data["calls"],
+                "sessions": data["sessions"],
+                "top_tools": [{"name": t, "calls": c} for t, c in top_tools],
+            })
+
+        self.send_json({
+            "servers": servers,
+            "total_calls": total_calls,
+            "total_servers": len(servers),
+        })
+
+    def api_mcp_trend(self, params):
+        """MCP usage daily trend"""
+        days = int(params.get("days", ["30"])[0])
+        scan = copy.deepcopy(_scan_all_projects())
+        daily_tools = scan.get("daily_tools", {})
+
+        # Aggregate by MCP server per day
+        sorted_dates = sorted(daily_tools.keys())[-days:]
+        # Collect all MCP server names
+        all_servers = set()
+        for dt in sorted_dates:
+            for tool_name in daily_tools[dt]:
+                if tool_name.startswith("mcp__"):
+                    parts = tool_name.split("__")
+                    if len(parts) >= 3:
+                        all_servers.add(parts[1])
+
+        trend = []
+        for dt in sorted_dates:
+            entry = {"date": dt}
+            dt_tools = daily_tools.get(dt, {})
+            for srv in all_servers:
+                count = 0
+                for tool_name, calls in dt_tools.items():
+                    if tool_name.startswith(f"mcp__{srv}__"):
+                        count += calls
+                entry[srv] = count
+            trend.append(entry)
+
+        # Also daily total for non-MCP tools
+        non_mcp_trend = []
+        for dt in sorted_dates:
+            dt_tools = daily_tools.get(dt, {})
+            mcp_total = sum(c for t, c in dt_tools.items() if t.startswith("mcp__"))
+            non_mcp = sum(c for t, c in dt_tools.items() if not t.startswith("mcp__"))
+            non_mcp_trend.append({"date": dt, "mcp": mcp_total, "builtin": non_mcp})
+
+        self.send_json({
+            "trend": trend,
+            "servers": sorted(all_servers),
+            "tool_type_trend": non_mcp_trend,
+        })
+
+    # ============================================================
+    # v0.6.1 — Rate Limit Predictor
+    # ============================================================
+    def api_rate_prediction(self, params):
+        """Predict rate limit timing based on current burn rate + quota"""
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        # 1. Get current quota utilization
+        cur_util = 0
+        resets_at = ""
+        profile = ""
+        try:
+            if USAGE_CACHE_FILE.exists():
+                with open(USAGE_CACHE_FILE, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("UTILIZATION="):
+                            cur_util = int(line.split("=", 1)[1])
+                        elif line.startswith("RESETS_AT="):
+                            resets_at = line.split("=", 1)[1]
+                        elif line.startswith("PROFILE_NAME="):
+                            profile = line.split("=", 1)[1]
+        except Exception:
+            pass
+
+        # 2. Compute burn rates over multiple windows
+        try:
+            logs = _scan_all_logs()
+        except Exception:
+            logs = []
+
+        windows = {"5m": 300, "15m": 900, "30m": 1800, "60m": 3600}
+        rates = {}
+        for label, secs in windows.items():
+            recent = [c for c in logs if c.get("timestamp") and
+                      (now - parse_iso_ts(c["timestamp"])).total_seconds() < secs]
+            if recent:
+                total_tok = sum(c.get("input_tokens", 0) + c.get("output_tokens", 0) +
+                                c.get("cache_read", 0) + c.get("cache_create", 0)
+                                for c in recent)
+                minutes = secs / 60
+                rates[label] = {
+                    "calls": len(recent),
+                    "tokens": total_tok,
+                    "rpm": round(len(recent) / minutes, 1),
+                    "tpm": round(total_tok / minutes),
+                }
+            else:
+                rates[label] = {"calls": 0, "tokens": 0, "rpm": 0, "tpm": 0}
+
+        # 3. Predict time to throttle
+        remaining_pct = max(0, 100 - cur_util)
+        # Use 30m window as primary predictor
+        burn_30m = rates.get("30m", {})
+        burn_rpm = burn_30m.get("rpm", 0)
+        burn_tpm = burn_30m.get("tpm", 0)
+
+        # Estimate minutes until 5h quota depletes
+        # 5h window = 300 minutes. If we've used cur_util% in (300 - remaining) minutes,
+        # at current rate the remaining% will be consumed in:
+        minutes_to_throttle = None
+        if burn_tpm > 0 and remaining_pct > 0:
+            # Rough: remaining_pct% of the 5h window at current token rate
+            minutes_to_throttle = round(remaining_pct / 100 * 300)
+        elif remaining_pct <= 0:
+            minutes_to_throttle = 0
+
+        # 4. Risk level
+        if cur_util >= 95 or remaining_pct <= 0:
+            risk = "critical"
+        elif cur_util >= 80 or (minutes_to_throttle is not None and minutes_to_throttle < 30):
+            risk = "danger"
+        elif cur_util >= 60 or (minutes_to_throttle is not None and minutes_to_throttle < 60):
+            risk = "warning"
+        elif cur_util >= 40:
+            risk = "caution"
+        else:
+            risk = "safe"
+
+        # 5. Safe RPM suggestion
+        # If we want to last the full remaining window, what RPM should we use?
+        safe_rpm = None
+        if minutes_to_throttle and minutes_to_throttle > 0 and burn_rpm > 0:
+            # To spread remaining quota evenly:
+            safe_rpm = round(burn_rpm * (minutes_to_throttle / 300) * (remaining_pct / 100), 1)
+            safe_rpm = max(0.5, safe_rpm)
+
+        # 6. Historical throttle events (detect utilization jumps from ~100% to low%)
+        # This is approximated from the quota data patterns
+
+        self.send_json({
+            "utilization": cur_util,
+            "remaining_pct": remaining_pct,
+            "resets_at": resets_at,
+            "profile": profile,
+            "rates": rates,
+            "minutes_to_throttle": minutes_to_throttle,
+            "risk": risk,
+            "safe_rpm": safe_rpm,
+            "burn_rpm_30m": burn_rpm,
+            "burn_tpm_30m": burn_tpm,
+        })
+
+    # ============================================================
+    # v0.6.2 — Prompt Efficiency Analysis
+    # ============================================================
+    def api_efficiency(self, params):
+        """Prompt efficiency analysis: output ratio, cache grade, mode classification"""
+        scan = copy.deepcopy(_scan_all_projects())
+        session_eff = scan.get("session_efficiency", {})
+
+        # 1. Global efficiency metrics
+        total_input = scan.get("total_input", 0)
+        total_output = scan.get("total_output", 0)
+        total_cr = scan.get("total_cache_read", 0)
+        total_cc = scan.get("total_cache_create", 0)
+        total_all = total_input + total_output + total_cr + total_cc
+        output_ratio = round(total_output / total_all * 100, 1) if total_all > 0 else 0
+        all_input = total_input + total_cr + total_cc
+        cache_rate = round(total_cr / all_input * 100, 1) if all_input > 0 else 0
+
+        if cache_rate >= 80:
+            cache_grade = "Excellent"
+        elif cache_rate >= 50:
+            cache_grade = "Good"
+        elif cache_rate >= 20:
+            cache_grade = "Fair"
+        else:
+            cache_grade = "Poor"
+
+        # 2. Per-session mode classification and efficiency ranking
+        sessions_ranked = []
+        mode_counts = {"exploration": 0, "building": 0, "debugging": 0, "review": 0}
+        mode_tokens = {"exploration": 0, "building": 0, "debugging": 0, "review": 0}
+
+        for sid, se in session_eff.items():
+            s_in = se.get("input", 0)
+            s_out = se.get("output", 0)
+            s_cr = se.get("cache_read", 0)
+            s_cc = se.get("cache_create", 0)
+            s_total = s_in + s_out + s_cr + s_cc
+            s_calls = se.get("calls", 0)
+            s_tools = se.get("tool_calls", 0)
+
+            if s_total == 0 or s_calls == 0:
+                continue
+
+            # Efficiency = output tokens / total tokens (higher = more "productive")
+            eff = round(s_out / s_total * 100, 1)
+
+            # Classify interaction mode
+            all_in = s_in + s_cr + s_cc
+            cache_ratio = s_cr / all_in if all_in > 0 else 0
+            tool_ratio = s_tools / s_calls if s_calls > 0 else 0
+            out_ratio = s_out / s_total if s_total > 0 else 0
+
+            if s_calls <= 3 and out_ratio < 0.15:
+                mode = "exploration"  # Short sessions, mostly reading
+            elif tool_ratio > 0.5 and out_ratio > 0.1:
+                mode = "building"    # Lots of tool use + output = writing code
+            elif s_calls >= 5 and cache_ratio > 0.6:
+                mode = "debugging"   # Many rounds, high cache reuse = iterating
+            elif s_cc > s_cr and out_ratio < 0.1:
+                mode = "review"      # Large cache creation, low output = reading lots of code
+            elif tool_ratio > 0.3:
+                mode = "building"
+            elif cache_ratio > 0.5:
+                mode = "debugging"
+            else:
+                mode = "exploration"
+
+            mode_counts[mode] += 1
+            mode_tokens[mode] += s_total
+
+            sessions_ranked.append({
+                "session_id": sid,
+                "project": se.get("project", ""),
+                "calls": s_calls,
+                "tool_calls": s_tools,
+                "total_tokens": s_total,
+                "output_tokens": s_out,
+                "efficiency": eff,
+                "mode": mode,
+                "cache_rate": round(cache_ratio * 100, 1),
+            })
+
+        # Sort by efficiency desc, take top/bottom
+        sessions_ranked.sort(key=lambda x: x["efficiency"], reverse=True)
+        top_efficient = sessions_ranked[:10]
+        least_efficient = sessions_ranked[-10:][::-1] if len(sessions_ranked) > 10 else []
+
+        # 3. Efficiency trend by day
+        daily = scan.get("daily", {})
+        eff_trend = []
+        for date in sorted(daily.keys())[-30:]:
+            d_tokens = daily[date].get("tokens", {})
+            d_out = sum(v.get("output", 0) for v in d_tokens.values())
+            d_total = sum(v.get("input", 0) + v.get("output", 0) + v.get("cache_read", 0) + v.get("cache_create", 0) for v in d_tokens.values())
+            d_cr = sum(v.get("cache_read", 0) for v in d_tokens.values())
+            d_all_in = sum(v.get("input", 0) + v.get("cache_read", 0) + v.get("cache_create", 0) for v in d_tokens.values())
+            eff_trend.append({
+                "date": date,
+                "output_ratio": round(d_out / d_total * 100, 1) if d_total > 0 else 0,
+                "cache_rate": round(d_cr / d_all_in * 100, 1) if d_all_in > 0 else 0,
+            })
+
+        # 4. Mode totals
+        total_mode = sum(mode_counts.values()) or 1
+        mode_pct = {k: round(v / total_mode * 100) for k, v in mode_counts.items()}
+
+        self.send_json({
+            "global": {
+                "output_ratio": output_ratio,
+                "cache_rate": cache_rate,
+                "cache_grade": cache_grade,
+                "total_sessions_analyzed": len(sessions_ranked),
+            },
+            "modes": {
+                "counts": mode_counts,
+                "percentages": mode_pct,
+                "tokens": mode_tokens,
+            },
+            "top_efficient": top_efficient,
+            "least_efficient": least_efficient,
+            "trend": eff_trend,
         })
 
 

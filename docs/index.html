@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CCDash — Demo</title>
+<title>CCDash</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
 <script src="https://cdn.jsdelivr.net/npm/apexcharts@4"></script>
@@ -11,25 +11,8 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
 <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
 <link rel="stylesheet" href="style.css?v=2">
-<style>
-.demo-banner{position:fixed;top:0;left:0;right:0;z-index:999;background:linear-gradient(90deg,#059669,#10b981,#34d399);color:#fff;text-align:center;padding:8px 16px;font:600 12px/1.4 'Inter',sans-serif;letter-spacing:.3px;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 2px 12px rgba(0,0,0,.3)}
-.demo-banner a{color:#fff;text-decoration:underline;font-weight:700}
-.demo-banner .demo-close{background:none;border:none;color:rgba(255,255,255,.8);cursor:pointer;font-size:18px;padding:2px 6px;margin-left:8px;border-radius:4px}
-.demo-banner .demo-close:hover{background:rgba(255,255,255,.2);color:#fff}
-body.has-banner .sidebar{top:36px}
-body.has-banner .main{padding-top:60px}
-body.has-banner .main::before{top:36px}
-body.has-banner .ld-ov{top:36px}
-</style>
 </head>
-<body data-theme="dark" class="has-banner">
-
-<!-- Demo Banner -->
-<div class="demo-banner" id="demoBanner">
-  <i class="ph ph-info" style="font-size:16px"></i>
-  This is a demo with sample data. <a href="https://github.com/anthropics/claude-code-monitor" target="_blank">Install CCDash</a> for real usage monitoring.
-  <button class="demo-close" onclick="document.getElementById('demoBanner').remove();document.body.classList.remove('has-banner')" title="Close">&times;</button>
-</div>
+<body data-theme="dark">
 
 <!-- Loading overlay -->
 <div class="ld-ov" id="ldOv">
@@ -178,6 +161,23 @@ body.has-banner .ld-ov{top:36px}
       </div>
     </div>
 
+    <!-- v0.6.1: Rate Limit Predictor -->
+    <div class="rate-predict-card card" id="ratePredictCard" style="display:none">
+      <div class="sec-title" style="margin-bottom:8px"><i class="ph ph-shield-warning"></i> <span data-i="ratePredict">Rate Limit Prediction</span></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+        <div style="text-align:center;min-width:80px">
+          <div id="riskBadge" style="display:inline-block;padding:4px 12px;border-radius:20px;font:700 13px var(--mono);text-transform:uppercase">—</div>
+          <div style="font-size:10px;color:var(--text-2);margin-top:4px" data-i="riskLevel">Risk Level</div>
+        </div>
+        <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
+          <div class="rp-item"><span class="rp-val" id="rpTimeLeft">—</span><span class="rp-label" data-i="timeToThrottle">Time to Throttle</span></div>
+          <div class="rp-item"><span class="rp-val" id="rpBurnRpm">—</span><span class="rp-label" data-i="currentRpm">Current RPM (30m)</span></div>
+          <div class="rp-item"><span class="rp-val" id="rpBurnTpm">—</span><span class="rp-label" data-i="currentTpm">Current TPM (30m)</span></div>
+          <div class="rp-item"><span class="rp-val" id="rpSafeRpm">—</span><span class="rp-label" data-i="safeRpm">Safe RPM</span></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Stat cards -->
     <div class="stat-cards">
       <div class="stat-card card">
@@ -284,6 +284,33 @@ body.has-banner .ld-ov{top:36px}
       </div>
     </div>
     <div class="card sec"><div class="sec-title"><i class="ph ph-folder"></i> <span data-i="projectTop">Project TOP 10</span></div><div class="sec-desc" data-i="projectTopDesc">Projects by token usage</div><div class="tw"><table><thead><tr><th data-i="project">Project</th><th data-i="msgs">Msgs</th><th data-i="sessions_l">Sessions</th><th>Token</th><th>%</th><th data-i="projectCost">Cost</th></tr></thead><tbody id="tbProj"></tbody></table></div></div>
+    <!-- v0.6.0: MCP Server Analytics -->
+    <div class="analytics-grid">
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-plugs-connected"></i> <span data-i="mcpServers">MCP Servers</span></div>
+        <div class="sec-desc" data-i="mcpServersDesc">MCP tool usage by server</div>
+        <div class="ring-c"><div class="ring-ch" id="chartMcp"></div>
+        <div class="ring-info" id="mcpList"></div></div>
+      </div>
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-chart-line-up"></i> <span data-i="mcpTrend">MCP Trend</span></div>
+        <div class="sec-desc" data-i="mcpTrendDesc">Built-in vs MCP tool usage over time</div>
+        <div id="chartMcpTrend" style="min-height:220px"></div>
+      </div>
+    </div>
+    <!-- v0.6.2: Efficiency Analysis -->
+    <div class="analytics-grid">
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-gauge"></i> <span data-i="efficiency">Prompt Efficiency</span></div>
+        <div class="sec-desc" data-i="efficiencyDesc">Output ratio, cache grade & interaction modes</div>
+        <div id="efficiencyPanel" style="margin-top:8px"></div>
+      </div>
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-trend-up"></i> <span data-i="effTrend">Efficiency Trend</span></div>
+        <div class="sec-desc" data-i="effTrendDesc">Daily output ratio & cache rate</div>
+        <div id="chartEffTrend" style="min-height:220px"></div>
+      </div>
+    </div>
   </div>
 
   <!-- PAGE: Live Stream -->
