@@ -1979,7 +1979,7 @@ let chMcp, chMcpTrend;
 const MCP_COLORS = ['#00e5ff','#4ade80','#f97316','#a78bfa','#f472b6','#facc15','#38bdf8','#fb923c','#818cf8','#34d399'];
 async function loadMcpStats() {
   try {
-    const d = await api('/api/mcp-stats');
+    const d = await api('/api/mcp-stats' + sourceParam('?'));
     if (!d || !d.servers || !d.servers.length) {
       const el = document.getElementById('chartMcp'); if(el) el.closest('.card')?.style.setProperty('display','none'); return;
     }
@@ -2009,7 +2009,7 @@ async function loadMcpStats() {
 }
 async function loadMcpTrend() {
   try {
-    const d = await api('/api/mcp-trend?days=30');
+    const d = await api('/api/mcp-trend?days=30' + sourceParam());
     if (!d || !d.tool_type_trend || !d.tool_type_trend.length) return;
     const dk = document.body.dataset.theme === 'dark';
     const t = I18N[curLang] || I18N.zh;
@@ -2037,7 +2037,7 @@ async function loadMcpTrend() {
 /* ===== v0.6.1: Rate Limit Predictor ===== */
 async function loadRatePrediction() {
   try {
-    const d = await api('/api/rate-prediction');
+    const d = await api('/api/rate-prediction' + sourceParam('?'));
     if (!d) return;
     const card = document.getElementById('ratePredictCard');
     // Only show if we have some quota data
@@ -2089,7 +2089,7 @@ async function loadRatePrediction() {
 let chEffTrend;
 async function loadEfficiency() {
   try {
-    const d = await api('/api/efficiency');
+    const d = await api('/api/efficiency' + sourceParam('?'));
     if (!d) return;
 
     const panel = document.getElementById('efficiencyPanel');
@@ -2150,7 +2150,7 @@ async function loadEfficiency() {
 /* ===== v0.7.0: Cost Optimization Insights ===== */
 async function loadInsights() {
   try {
-    const d = await api('/api/insights');
+    const d = await api('/api/insights' + sourceParam('?'));
     if (!d || !d.insights || !d.insights.length) {
       const c = document.getElementById('insightsCard'); if(c) c.style.display='none'; return;
     }
@@ -2173,7 +2173,7 @@ async function loadInsights() {
 /* ===== v0.7.1: Budget Management ===== */
 async function loadBudget() {
   try {
-    const d = await api('/api/budget');
+    const d = await api('/api/budget' + sourceParam('?'));
     if (!d || !d.configured) {
       const c = document.getElementById('budgetCard'); if(c) c.style.display='none'; return;
     }
@@ -2223,7 +2223,7 @@ async function loadReport(type) {
   const el = document.getElementById('reportContent');
   if (!el) return;
   try {
-    const d = await api(`/api/report?type=${type}`);
+    const d = await api(`/api/report?type=${type}` + sourceParam());
     if (!d) { el.innerHTML = ''; return; }
     const t = I18N[curLang] || I18N.zh;
     const c = d.current, p = d.previous, dl = d.deltas;

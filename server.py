@@ -3362,6 +3362,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     # ============================================================
     def api_mcp_stats(self, params):
         """MCP server-level aggregated statistics"""
+        source = params.get("source", ["all"])[0]
+        # MCP tools are Claude Code specific — return empty for codex-only
+        if source == "codex":
+            self.send_json({"servers": [], "total_calls": 0, "total_servers": 0})
+            return
         scan = copy.deepcopy(_scan_all_projects())
         mcp = scan.get("mcp_stats", {})
         if not mcp:
@@ -3389,6 +3394,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def api_mcp_trend(self, params):
         """MCP usage daily trend"""
+        source = params.get("source", ["all"])[0]
+        if source == "codex":
+            self.send_json({"trend": [], "servers": [], "tool_type_trend": []})
+            return
         days = int(params.get("days", ["30"])[0])
         scan = copy.deepcopy(_scan_all_projects())
         daily_tools = scan.get("daily_tools", {})
@@ -3435,6 +3444,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     # ============================================================
     def api_rate_prediction(self, params):
         """Predict rate limit timing based on current burn rate + quota"""
+        source = params.get("source", ["all"])[0]
         now = datetime.datetime.now(datetime.timezone.utc)
 
         # 1. Get current quota utilization
@@ -3458,6 +3468,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         # 2. Compute burn rates over multiple windows
         try:
             logs = _scan_all_logs()
+            if source != "all":
+                logs = [c for c in logs if c.get("source", "claude") == source]
         except Exception:
             logs = []
 
@@ -3538,7 +3550,22 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     # ============================================================
     def api_efficiency(self, params):
         """Prompt efficiency analysis: output ratio, cache grade, mode classification"""
+        source = params.get("source", ["all"])[0]
         scan = copy.deepcopy(_scan_all_projects())
+        codex_scan = _scan_codex() if _codex_enabled() else None
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
+        # Source filtering for totals
+        if source != "all":
+            claude_models = set(_scan_all_projects(force=False).get("models", {}).keys())
+            if source == "claude":
+                scan["models"] = {m: v for m, v in scan.get("models", {}).items() if m in claude_models}
+            elif source == "codex":
+                scan["models"] = {m: v for m, v in scan.get("models", {}).items() if m not in claude_models}
+            scan["total_input"] = sum(v.get("input", 0) for v in scan["models"].values())
+            scan["total_output"] = sum(v.get("output", 0) for v in scan["models"].values())
+            scan["total_cache_read"] = sum(v.get("cache_read", 0) for v in scan["models"].values())
+            scan["total_cache_create"] = sum(v.get("cache_create", 0) for v in scan["models"].values())
         session_eff = scan.get("session_efficiency", {})
 
         # 1. Global efficiency metrics
@@ -3662,7 +3689,17 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     # ============================================================
     def api_insights(self, params):
         """Smart cost optimization suggestions (pure rule-driven)"""
+        source = params.get("source", ["all"])[0]
         scan = copy.deepcopy(_scan_all_projects())
+        codex_scan = _scan_codex() if _codex_enabled() else None
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
+        if source != "all":
+            claude_models = set(_scan_all_projects(force=False).get("models", {}).keys())
+            if source == "claude":
+                scan["models"] = {m: v for m, v in scan.get("models", {}).items() if m in claude_models}
+            elif source == "codex":
+                scan["models"] = {m: v for m, v in scan.get("models", {}).items() if m not in claude_models}
         session_eff = scan.get("session_efficiency", {})
         models = scan.get("models", {})
         daily = scan.get("daily", {})
@@ -3781,6 +3818,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     # ============================================================
     def api_budget_get(self, params):
         """GET /api/budget — current budget config + status"""
+        source = params.get("source", ["all"])[0]
         config = _load_config()
         budget = config.get("budget", {})
         if not budget:
@@ -3789,6 +3827,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # Compute current spend
         scan = copy.deepcopy(_scan_all_projects())
+        codex_scan = _scan_codex() if _codex_enabled() else None
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
+        # Filter daily tokens by source
+        if source != "all":
+            claude_models = set(_scan_all_projects(force=False).get("models", {}).keys())
+            for d_data in scan.get("daily", {}).values():
+                if "tokens" in d_data:
+                    if source == "claude":
+                        d_data["tokens"] = {m: v for m, v in d_data["tokens"].items() if m in claude_models}
+                    elif source == "codex":
+                        d_data["tokens"] = {m: v for m, v in d_data["tokens"].items() if m not in claude_models}
         daily = scan.get("daily", {})
         models_data = scan.get("models", {})
         today_str = datetime.date.today().isoformat()
@@ -3860,10 +3910,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def api_report(self, params):
         """Weekly/monthly comparison report"""
         report_type = params.get("type", ["weekly"])[0]
+        source = params.get("source", ["all"])[0]
         scan = copy.deepcopy(_scan_all_projects())
         codex_scan = _scan_codex() if _codex_enabled() else None
         if codex_scan:
             scan = _merge_codex_into_scan(scan, codex_scan)
+        # Filter daily tokens by source
+        if source != "all":
+            claude_models = set(_scan_all_projects(force=False).get("models", {}).keys())
+            for d_data in scan.get("daily", {}).values():
+                if "tokens" in d_data:
+                    if source == "claude":
+                        d_data["tokens"] = {m: v for m, v in d_data["tokens"].items() if m in claude_models}
+                    elif source == "codex":
+                        d_data["tokens"] = {m: v for m, v in d_data["tokens"].items() if m not in claude_models}
         daily = scan.get("daily", {})
         models = scan.get("models", {})
         today = datetime.date.today()
