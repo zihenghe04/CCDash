@@ -1796,6 +1796,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/hourly-trend": self.api_hourly_trend,
             "/api/web-conversations": self.api_web_conversations,
             "/api/web-conversation-detail": self.api_web_conversation_detail,
+            "/api/today-breakdown": self.api_today_breakdown,
             "/api/settings": self.api_settings_get,
         }
 
@@ -2249,6 +2250,76 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if remote_proj:
             result = _merge_projects(result, remote_proj)
         self.send_json({"projects": result})
+
+    def api_today_breakdown(self, params):
+        """Today's usage broken down by model"""
+        source = params.get("source", ["all"])[0]
+        today_str = datetime.date.today().isoformat()
+
+        # Gather today's log entries from Claude Code logs
+        claude_logs = _scan_all_logs()
+        today_logs = [c for c in claude_logs if c.get("timestamp", "").startswith(today_str)]
+
+        # Include Codex logs if enabled
+        if _codex_enabled():
+            codex_logs = _scan_codex_logs()
+            codex_today = [c for c in codex_logs if c.get("timestamp", "").startswith(today_str)]
+            today_logs.extend(codex_today)
+
+        # Filter by source
+        if source == "claude":
+            today_logs = [c for c in today_logs if c.get("source", "claude") == "claude"]
+        elif source == "codex":
+            today_logs = [c for c in today_logs if c.get("source", "claude") == "codex"]
+
+        # Group by model
+        model_map = {}  # model -> aggregated stats
+        for c in today_logs:
+            model = c.get("model", "unknown")
+            if model not in model_map:
+                model_map[model] = {
+                    "model": model,
+                    "provider": _model_provider(model),
+                    "calls": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cache_read": 0,
+                    "cache_create": 0,
+                    "total_tokens": 0,
+                    "cost_usd": 0.0,
+                    "source": c.get("source", "claude"),
+                }
+            entry = model_map[model]
+            entry["calls"] += 1
+            inp = c.get("input_tokens", 0) or 0
+            out = c.get("output_tokens", 0) or 0
+            cr = c.get("cache_read", 0) or 0
+            cc = c.get("cache_create", 0) or 0
+            entry["input_tokens"] += inp
+            entry["output_tokens"] += out
+            entry["cache_read"] += cr
+            entry["cache_create"] += cc
+            entry["total_tokens"] += inp + out + cr + cc
+            entry["cost_usd"] += c.get("cost_usd", 0) or _calc_cost(model, inp, out, cr, cc)
+
+        # Round costs
+        for entry in model_map.values():
+            entry["cost_usd"] = round(entry["cost_usd"], 4)
+
+        # Sort by cost descending
+        models_list = sorted(model_map.values(), key=lambda x: -x["cost_usd"])
+
+        total_cost = round(sum(e["cost_usd"] for e in models_list), 4)
+        total_calls = sum(e["calls"] for e in models_list)
+        total_tokens = sum(e["total_tokens"] for e in models_list)
+
+        self.send_json({
+            "date": today_str,
+            "models": models_list,
+            "total_cost": total_cost,
+            "total_calls": total_calls,
+            "total_tokens": total_tokens,
+        })
 
     def api_sessions(self, params):
         """会话列表（支持搜索、项目过滤、日期范围、数据源过滤）"""

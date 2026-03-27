@@ -49,7 +49,8 @@ const I18N = {
     dataSources:'数据源', dataSourcesDesc:'已检测到的 CLI 工具数据',
     claudeCode:'Claude Code', codexCli:'Codex CLI',
     sourceCodex:'Codex', sourceClaude:'Claude',
-    webConversations:'Web & 客户端', webConversationsDesc:'来自网页版、桌面客户端和 SDK 的会话'
+    webConversations:'Web & 客户端', webConversationsDesc:'来自网页版、桌面客户端和 SDK 的会话',
+    todayBreakdown:'今日模型消耗', todayBreakdownDesc:'按模型统计今日调用次数、Token 和成本'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -93,7 +94,8 @@ const I18N = {
     dataSources:'Data Sources', dataSourcesDesc:'Detected CLI tool data',
     claudeCode:'Claude Code', codexCli:'Codex CLI',
     sourceCodex:'Codex', sourceClaude:'Claude',
-    webConversations:'Web & Desktop', webConversationsDesc:'Conversations from web, desktop app & SDK'
+    webConversations:'Web & Desktop', webConversationsDesc:'Conversations from web, desktop app & SDK',
+    todayBreakdown:"Today's Cost by Model", todayBreakdownDesc:'Per-model calls, tokens and cost for today'
   }
 };
 let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
@@ -175,7 +177,8 @@ function switchSource(src) {
   }
   Promise.all([
     loadOverview(), loadCharts(), loadModels(), loadProjects(),
-    loadLive(), loadLogs(), loadSess(), loadTools(), loadRhythm()
+    loadLive(), loadLogs(), loadSess(), loadTools(), loadRhythm(),
+    loadTodayBreakdown()
   ]).then(() => {
     if (main) {
       main.style.transition = 'opacity .2s ease-in, transform .2s ease-in';
@@ -324,18 +327,25 @@ function relativeTime(s) {
   } catch { return s; }
 }
 
-/* ---- Model colors (Zinc palette) ---- */
+/* ---- Model colors (max contrast between commonly used models) ---- */
 const MC = {
-  'claude-opus-4-6':'#60a5fa',
-  'claude-sonnet-4-6':'#60a5fa',
-  'claude-sonnet-4-5':'#c084fc',
-  'claude-sonnet-4-5-20250929':'#c084fc',
-  'claude-haiku-4-5-20251001':'#4ade80',
-  'gpt-5.3-codex':'#10b981',
-  'gpt-5.4':'#10b981',
-  'gpt-4o':'#10b981',
+  'claude-opus-4-6':'#f97316',       // orange — primary, stands out
+  'claude-sonnet-4-6':'#3b82f6',     // blue — clearly different from orange
+  'claude-opus-4-5-20251101':'#ef4444', // red
+  'claude-sonnet-4-5':'#8b5cf6',     // violet
+  'claude-sonnet-4-5-20250929':'#8b5cf6',
+  'claude-haiku-4-5-20251001':'#22c55e', // green
+  'gpt-5.3-codex':'#eab308',        // yellow
+  'gpt-5.4':'#ec4899',              // pink
+  'gpt-5.2-codex':'#14b8a6',        // teal
+  'gpt-4o':'#f43f5e',               // rose
+  'gpt-4o-mini':'#a3e635',          // lime
+  'gpt-5-mini':'#e879f9',           // fuchsia
+  'GLM-5':'#06b6d4',                // cyan
+  'MiniMax-M2.5':'#a855f7',         // purple
+  '<synthetic>':'#6b7280',          // gray
 };
-function mC(m) { return MC[m] || '#2dd4bf'; }
+function mC(m) { return MC[m] || '#94a3b8'; }
 function mS(m) { return m.replace('claude-','').replace(/-\d{8}$/,''); }
 
 /* ---- Entrypoint Badge ---- */
@@ -404,7 +414,7 @@ function switchPage(pageId) {
   const pt = document.getElementById('pageTitle');
   if (pt && titleMap[pageId]) pt.textContent = t[titleMap[pageId]] || pageId;
   // Lazy load
-  if (pageId === 'overview' && !chA) renderCharts();
+  if (pageId === 'overview') { if (!chA) renderCharts(); loadTodayBreakdown(); }
   if (pageId === 'live') { loadLive(); }
   if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); }
   if (pageId === 'logs') { loadLogs(); loadSess(); loadWebConversations(); }
@@ -911,6 +921,85 @@ function renderModelsData(d) {
   if (sel.options.length <= 1) ms.forEach(([m]) => { const o = document.createElement('option'); o.value = m; o.textContent = mS(m); sel.appendChild(o); });
 }
 async function loadModels() { const d = await api('/api/models' + sourceParam('?')); if(!d) return; window._allData.models = d; renderModelsData(d); }
+
+/* ---- Today's Model Breakdown ---- */
+async function loadTodayBreakdown() {
+  const d = await api('/api/today-breakdown' + sourceParam('?'));
+  if (!d) return;
+  const dateEl = document.getElementById('todayDate');
+  if (dateEl) dateEl.textContent = d.date || '';
+  const container = document.getElementById('todayBreakdownContent');
+  if (!container) return;
+
+  if (!d.models || d.models.length === 0) {
+    container.innerHTML = '<div class="tbd-empty">' + (curLang==='zh' ? '今日暂无数据' : 'No data for today') + '</div>';
+    return;
+  }
+
+  const totalCost = d.total_cost || 0;
+  const t = I18N[curLang] || I18N.zh;
+
+  // Build table (left) + donut chart (right)
+  let tableHtml = '<table class="tbd-table"><thead><tr>';
+  tableHtml += '<th>' + (t.model || 'Model') + '</th>';
+  tableHtml += '<th>' + (t.calls || 'Calls') + '</th>';
+  tableHtml += '<th><span class="tk-in">\u2193</span> In</th>';
+  tableHtml += '<th><span class="tk-out">\u2191</span> Out</th>';
+  tableHtml += '<th><span class="tk-cr">\u27F2</span> Cache</th>';
+  tableHtml += '<th style="color:var(--green)">Cost</th>';
+  tableHtml += '</tr></thead><tbody>';
+
+  d.models.forEach(m => {
+    const color = mC(m.model);
+    const costStr = m.cost_usd >= 1000 ? '$' + (m.cost_usd/1000).toFixed(1) + 'K' : '$' + m.cost_usd.toFixed(2);
+    const cache = fmt(m.cache_read + m.cache_create);
+    tableHtml += '<tr data-row-source="' + (m.source || 'claude') + '">';
+    tableHtml += '<td><span class="mdot" style="background:' + color + '"></span>' + mS(m.model) + '</td>';
+    tableHtml += '<td class="mono">' + m.calls + '</td>';
+    tableHtml += '<td class="mono">' + fmt(m.input_tokens) + '</td>';
+    tableHtml += '<td class="mono">' + fmt(m.output_tokens) + '</td>';
+    tableHtml += '<td class="mono">' + cache + '</td>';
+    tableHtml += '<td style="color:var(--green);font-weight:600">' + costStr + '</td>';
+    tableHtml += '</tr>';
+  });
+
+  const totalCostStr = totalCost >= 1000 ? '$' + (totalCost/1000).toFixed(1) + 'K' : '$' + totalCost.toFixed(2);
+  tableHtml += '<tr class="tbd-total"><td>' + (curLang==='zh' ? '\u5408\u8BA1' : 'Total') + '</td>';
+  tableHtml += '<td class="mono">' + d.total_calls + '</td>';
+  tableHtml += '<td class="mono" colspan="3">' + fmt(d.total_tokens) + ' tok</td>';
+  tableHtml += '<td style="color:var(--green)">' + totalCostStr + '</td></tr>';
+  tableHtml += '</tbody></table>';
+
+  // Donut chart + legend list (same style as Tool Distribution)
+  let legendHtml = d.models.map(m => {
+    const c = mC(m.model);
+    const pct = totalCost > 0 ? (m.cost_usd / totalCost * 100).toFixed(0) : 0;
+    const costStr = m.cost_usd >= 1 ? '$'+m.cost_usd.toFixed(2) : '$'+m.cost_usd.toFixed(4);
+    return `<div style="display:flex;align-items:center;gap:6px;margin:4px 0">
+      <span style="width:8px;height:8px;border-radius:50%;background:${c};flex-shrink:0;box-shadow:0 0 6px ${c}"></span>
+      <span style="font-size:12px;flex:1">${mS(m.model)}</span>
+      <span class="mono" style="font-size:11px;color:var(--green)">${costStr}</span>
+      <span style="font-size:10px;color:var(--text-2)">${pct}%</span>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = '<div class="tbd-split"><div class="tbd-table-wrap">' + tableHtml + '</div><div class="tbd-chart-wrap"><div class="ring-c"><div class="ring-ch" id="todayDonut"></div><div class="ring-info">' + legendHtml + '</div></div></div></div>';
+
+  // Render donut chart (same config as Tool Distribution)
+  const dk = document.body.dataset.theme === 'dark';
+  if (window._todayDonut) window._todayDonut.destroy();
+  window._todayDonut = new ApexCharts(document.getElementById('todayDonut'), {
+    chart:{type:'donut',height:190,background:'transparent',foreColor:dk?'#9ca3b0':'#4b5563'},
+    series: d.models.map(m => m.cost_usd),
+    labels: d.models.map(m => mS(m.model)),
+    colors: d.models.map(m => mC(m.model)),
+    plotOptions:{pie:{donut:{size:'60%',labels:{show:true,name:{show:false},value:{show:true,fontSize:'15px',fontWeight:700,fontFamily:'JetBrains Mono',color:dk?'#e8ecf1':'#111827',formatter:()=>totalCostStr},total:{show:true,label:'Total',formatter:()=>totalCostStr}}}}},
+    dataLabels:{enabled:false},legend:{show:false},stroke:{width:0},
+    theme:apexTheme(),
+    tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>'$'+v.toFixed(2)}}
+  });
+  window._todayDonut.render();
+}
 
 function renderProjectsData(d) {
   if (!d) return;
@@ -1860,7 +1949,7 @@ async function init() {
     await Promise.all([
       loadStatus(), loadOverview(), loadCharts(), loadModels(),
       loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(),
-      loadWebConversations()
+      loadWebConversations(), loadTodayBreakdown()
     ]);
     notyf.success(curLang==='zh' ? 'Dashboard 加载完成' : 'Dashboard loaded');
   } catch(e) {
@@ -1882,7 +1971,7 @@ async function refreshAll() {
   document.getElementById('lastUp').textContent = curLang==='zh' ? '刷新中...' : 'Refreshing...';
   try {
     await api('/api/overview?refresh=1' + sourceParam());
-    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations()]);
+    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations(), loadTodayBreakdown()]);
     notyf.success(curLang==='zh' ? '已更新' : 'Updated');
   } catch { notyf.error(curLang==='zh' ? '刷新失败' : 'Refresh failed'); }
   document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
