@@ -1347,6 +1347,7 @@ function exportData(format) {
 /* ---- Session Detail Modal ---- */
 async function showSessionDetail(sessionId) {
   if (!sessionId) return;
+  resetReplay(); // Reset replay state when switching sessions
   const modal = document.getElementById('sessionModal');
   const content = document.getElementById('sessionModalContent');
   const isAlreadyOpen = modal.style.display === 'flex';
@@ -2374,7 +2375,7 @@ async function loadAccounts() {
 let _replayState = { playing: false, index: 0, speed: 1, timer: null, events: [] };
 
 function startReplay() {
-  const events = document.querySelectorAll('.tl-event');
+  const events = document.querySelectorAll('.timeline-event');
   if (!events.length) return;
   _replayState.events = events;
   _replayState.index = 0;
@@ -2451,19 +2452,30 @@ async function loadPlugins() {
         : `<span style="font:600 8px var(--font);padding:2px 6px;border-radius:4px;background:rgba(168,85,247,.1);color:#a855f7">${t.pluginCustom||'Custom'}</span>`;
       const statusDot = p.status === 'active' ? 'var(--green)' : p.status === 'disabled' ? 'var(--orange)' : 'var(--red)';
       const statusText = p.status === 'active' ? (curLang==='zh'?'运行中':'Active') : p.status === 'disabled' ? (curLang==='zh'?'已禁用':'Disabled') : (curLang==='zh'?'未检测':'Not detected');
+      // Only custom plugins can be toggled
+      const toggleBtn = p.type === 'custom' ? `<button onclick="togglePlugin('${p.file?.replace('.py','')||p.name}',${!p.enabled})" style="padding:3px 10px;border-radius:6px;border:1px solid var(--border-l);background:${p.enabled?'var(--accent)':'var(--bg-4)'};color:${p.enabled?'#fff':'var(--text-1)'};font:600 10px var(--font);cursor:pointer">${p.enabled?(curLang==='zh'?'禁用':'Disable'):(curLang==='zh'?'启用':'Enable')}</button>` : '';
       return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin:6px 0;border-radius:8px;background:var(--bg-3);border:1px solid var(--border-l)">
         <i class="ph ph-plug" style="font-size:18px;color:var(--text-2)"></i>
         <div style="flex:1">
           <div style="font:600 13px var(--font);color:var(--text-0)">${p.name} ${typeBadge}</div>
           <div style="font:400 10px var(--font);color:var(--text-2);margin-top:2px">${p.description||''}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:5px">
+        <div style="display:flex;align-items:center;gap:8px">
           <span style="width:7px;height:7px;border-radius:50%;background:${statusDot}"></span>
           <span style="font:500 11px var(--font);color:var(--text-1)">${statusText}</span>
+          ${toggleBtn}
         </div>
       </div>`;
     }).join('');
   } catch(e) { console.warn('loadPlugins:', e); }
+}
+async function togglePlugin(name, enabled) {
+  try {
+    await fetch('/api/plugin-toggle', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name, enabled})});
+    notyf.success(curLang==='zh'?`插件 ${name} 已${enabled?'启用':'禁用'}`:`Plugin ${name} ${enabled?'enabled':'disabled'}`);
+    loadPlugins();
+  } catch(e) { notyf.error(String(e)); }
 }
 
 /* ===== Init ===== */

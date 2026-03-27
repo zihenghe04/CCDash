@@ -1893,6 +1893,24 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self.api_budget_post(data)
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
+        elif path == "/api/plugin-toggle":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length)
+                data = json.loads(body.decode("utf-8")) if body else {}
+                plugin_name = data.get("name", "")
+                enabled = data.get("enabled", False)
+                if not plugin_name:
+                    self.send_json({"error": "name required"}, 400)
+                else:
+                    config = _load_config()
+                    plugins_cfg = config.setdefault("plugins", {})
+                    plugins_cfg.setdefault(plugin_name, {})["enabled"] = enabled
+                    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                        json.dump(config, f, indent=2, ensure_ascii=False)
+                    self.send_json({"ok": True, "name": plugin_name, "enabled": enabled})
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
         elif path == "/api/webhooks":
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
