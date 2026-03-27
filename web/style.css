@@ -612,3 +612,25 @@ tr:nth-child(even) td { background:var(--stripe); }
 .tbd-chart-wrap { flex-shrink:0; }
 .tbd-empty { padding:32px; text-align:center; color:var(--text-2); font:400 13px var(--font); }
 @media(max-width:700px) { .tbd-split { flex-direction:column; } .tbd-chart-wrap { width:100%; } }
+
+/* ---- v0.6.1: Rate Limit Predictor ---- */
+.rate-predict-card { padding:16px 20px; margin-bottom:16px; }
+.rp-item { text-align:center; padding:6px 0; }
+.rp-val { display:block; font:700 18px var(--mono); color:var(--text-0); }
+.rp-label { display:block; font:400 10px var(--font); color:var(--text-2); margin-top:2px; }
+.risk-safe { background:rgba(34,197,94,0.15); color:#22c55e; }
+.risk-caution { background:rgba(234,179,8,0.15); color:#eab308; }
+.risk-warning { background:rgba(249,115,22,0.15); color:#f97316; }
+.risk-danger { background:rgba(239,68,68,0.15); color:#ef4444; }
+.risk-critical { background:rgba(239,68,68,0.25); color:#ef4444; animation:pulse-risk 1.5s ease-in-out infinite; }
+@keyframes pulse-risk { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+/* ---- v0.6.2: Efficiency Panel ---- */
+.eff-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(100px,1fr)); gap:10px; margin-bottom:14px; }
+.eff-stat { text-align:center; padding:10px 6px; border-radius:10px; background:var(--bg-3); }
+.eff-stat-val { font:700 20px var(--mono); }
+.eff-stat-label { font:400 10px var(--font); color:var(--text-2); margin-top:2px; }
+.eff-mode-bar { display:flex; height:24px; border-radius:12px; overflow:hidden; margin:10px 0; }
+.eff-mode-legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
+.eff-mode-item { display:flex; align-items:center; gap:5px; font-size:11px; }
+.eff-mode-dot { width:8px; height:8px; border-radius:50%; }

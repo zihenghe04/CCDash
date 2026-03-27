@@ -69,7 +69,10 @@ You're paying for a Claude subscription. But do you actually know:
 > Per-call cost based on [official Anthropic pricing](https://docs.anthropic.com/en/docs/about-claude/pricing) · daily cost trend chart · per-model & per-project cost breakdown · cost column in live stream & system logs · cache efficiency grading (Excellent/Good/Fair/Poor)
 
 ### 🔍 Deep Analytics
-> Model DNA stacked bar (Opus/Sonnet/Haiku) · tool distribution donut (Read/Edit/Bash/Write) · coding rhythm (morning/afternoon/evening/night) · work mode analysis (Exploration/Building/Execution) · cache hit analysis · activity heatmap · context window usage % · project TOP 10 with costs
+> Model DNA stacked bar (Opus/Sonnet/Haiku) · tool distribution donut (Read/Edit/Bash/Write) · **MCP server analytics** (per-server call/session grouping + trend) · coding rhythm (morning/afternoon/evening/night) · work mode analysis (Exploration/Building/Execution) · **prompt efficiency** (output ratio, cache grade, interaction mode classification) · cache hit analysis · activity heatmap · context window usage % · project TOP 10 with costs
+
+### ⚡ Rate Limit Predictor
+> **Risk level indicator** (Safe → Critical) · time-to-throttle countdown · safe RPM suggestion · multi-window burn rates (5m/15m/30m/60m) · auto-hidden when no quota data
 
 ### 📋 Session Detail
 > Click any session to open a full conversation timeline modal · user prompts & assistant responses with tool call badges · file operations tracking · session chain visualization (all sessions in the same project) · copy Session ID / `claude --resume` command · privacy mode to blur sensitive content

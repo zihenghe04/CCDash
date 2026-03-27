@@ -5,6 +5,61 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.6.0] — 2026-03-27
+
+### 🚀 New Features
+
+#### MCP Server Analytics (v0.6.0)
+- **MCP server grouping** — `mcp__playwright__*` tools auto-grouped under "playwright" server
+- **MCP donut chart** — per-server call distribution with session count
+- **MCP trend chart** — daily Built-in vs MCP tool usage area chart
+- **`/api/mcp-stats`** — MCP server-level aggregated statistics (calls, sessions, top tools)
+- **`/api/mcp-trend`** — daily MCP usage trend data
+
+#### Rate Limit Predictor (v0.6.1)
+- **Risk level indicator** — 🟢 Safe → 🟡 Caution → 🟠 Warning → 🔴 Danger → ⚫ Critical
+- **Time-to-throttle countdown** — predicts when 5h quota will be exhausted
+- **Safe RPM suggestion** — recommended request rate to avoid throttling
+- **Multi-window burn rates** — 5m / 15m / 30m / 60m sliding windows
+- **`/api/rate-prediction`** — prediction data with risk level and safe RPM
+
+#### Prompt Efficiency Analysis (v0.6.2)
+- **Output ratio** — output_tokens / total_tokens percentage
+- **Cache efficiency grade** — Excellent / Good / Fair / Poor with color coding
+- **Interaction mode classification** — Exploration / Building / Debugging / Review
+- **Mode distribution bar** — stacked bar showing session mode breakdown
+- **Efficiency trend** — daily output ratio & cache rate line chart
+- **`/api/efficiency`** — efficiency metrics, mode classification, trend data
+
+### 🎨 UI
+- Rate Limit Predictor card on Overview page (auto-hidden when no quota data)
+- MCP Servers donut + MCP Trend area chart on Analytics page
+- Efficiency panel with mode bar + trend chart on Analytics page
+- New CSS: risk badges with pulse animation, efficiency grid, mode legend
+
+### 🚀 新功能
+
+#### MCP 工具分析 (v0.6.0)
+- **MCP 服务器分组** — `mcp__playwright__*` 等工具自动归类到对应服务器
+- **MCP 分布饼图** — 按服务器显示调用分布和会话数
+- **MCP 趋势图** — 内置工具 vs MCP 工具每日使用趋势
+- **`/api/mcp-stats`** + **`/api/mcp-trend`** — MCP 统计和趋势端点
+
+#### 限速预测器 (v0.6.1)
+- **风险等级指示器** — Safe / Caution / Warning / Danger / Critical 五档
+- **限速倒计时** — 预测 5h 额度耗尽时间
+- **安全 RPM 建议** — 推荐请求速率以避免限速
+- **多窗口消耗率** — 5m / 15m / 30m / 60m 滑动窗口
+- **`/api/rate-prediction`** — 预测数据端点
+
+#### Prompt 效率分析 (v0.6.2)
+- **输出比率** — output_tokens 占总 token 的百分比
+- **缓存效率评级** — Excellent / Good / Fair / Poor
+- **交互模式分类** — 探索 / 构建 / 调试 / 审查 四种模式
+- **效率趋势** — 每日输出比率和缓存命中率变化
+
+---
+
 ## [0.5.1] — 2026-03-27
 
 ### 🚀 New Features
