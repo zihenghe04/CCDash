@@ -1066,9 +1066,10 @@ function renderSessionsData(d) {
   if (!d) return;
   const sel = document.getElementById('sFilt');
   if (sel && sel.options.length <= 1 && d.projects) d.projects.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p.split('/').pop() || '~'; sel.appendChild(o); });
-  // Desktop/SDK entrypoints that should go to Web & Desktop section
-  const _desktopEntrypoints = ['claude-desktop', 'sdk-ts', 'sdk-cli', 'local-agent'];
-  const _isDesktopSession = s => _desktopEntrypoints.includes(s.entrypoint);
+  // Only SDK entrypoints go to Web & Desktop section
+  // claude-desktop is essentially CLI usage (coding in Desktop App), stays in main list
+  const _webEntrypoints = ['sdk-ts', 'sdk-cli'];
+  const _isDesktopSession = s => _webEntrypoints.includes(s.entrypoint);
 
   // CLI + Codex + remote (no entrypoint) sessions stay in main list
   const cliSessions = d.sessions.filter(s => !_isDesktopSession(s));
