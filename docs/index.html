@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CCDash — Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/countup.js@2.8.0/dist/countUp.umd.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
+<script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
+<link rel="stylesheet" href="style.css?v=2">
+<style>
+.demo-banner{position:fixed;top:0;left:0;right:0;z-index:999;background:linear-gradient(90deg,#059669,#10b981,#34d399);color:#fff;text-align:center;padding:8px 16px;font:600 12px/1.4 'Inter',sans-serif;letter-spacing:.3px;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 2px 12px rgba(0,0,0,.3)}
+.demo-banner a{color:#fff;text-decoration:underline;font-weight:700}
+.demo-banner .demo-close{background:none;border:none;color:rgba(255,255,255,.8);cursor:pointer;font-size:18px;padding:2px 6px;margin-left:8px;border-radius:4px}
+.demo-banner .demo-close:hover{background:rgba(255,255,255,.2);color:#fff}
+body.has-banner .sidebar{top:36px}
+body.has-banner .main{padding-top:60px}
+body.has-banner .main::before{top:36px}
+body.has-banner .ld-ov{top:36px}
+</style>
+</head>
+<body data-theme="dark" class="has-banner">
+
+<!-- Demo Banner -->
+<div class="demo-banner" id="demoBanner">
+  <i class="ph ph-info" style="font-size:16px"></i>
+  This is a demo with sample data. <a href="https://github.com/anthropics/claude-code-monitor" target="_blank">Install CCDash</a> for real usage monitoring.
+  <button class="demo-close" onclick="document.getElementById('demoBanner').remove();document.body.classList.remove('has-banner')" title="Close">&times;</button>
+</div>
+
+<!-- Loading overlay -->
+<div class="ld-ov" id="ldOv">
+  <img src="logo.png" class="ld-logo-img" alt="CCDash" width="64" height="64">
+  <div class="ld-brand">CCDash</div>
+  <div class="ld-txt" id="ldTxt" data-i="loading">Loading...</div>
+  <div class="ld-bar-wrap"><div class="ld-bar-fill"></div></div>
+</div>
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <img src="logo.png" class="sidebar-logo-img" alt="CCDash" width="36" height="36">
+    <div class="sidebar-brand">
+      <span class="sidebar-title">CCDash</span>
+      <span class="sidebar-subtitle">Usage Dashboard</span>
+    </div>
+  </div>
+  <nav class="sidebar-nav" id="sidebarNav">
+    <div class="nav-slider" id="navSlider"></div>
+    <a class="nav-item active" data-page="overview" onclick="switchPage('overview')">
+      <i class="ph ph-squares-four"></i>
+      <span data-i="navOverview">Overview</span>
+    </a>
+    <a class="nav-item" data-page="analytics" onclick="switchPage('analytics')">
+      <i class="ph ph-chart-line-up"></i>
+      <span data-i="navAnalytics">Analytics</span>
+    </a>
+    <a class="nav-item" data-page="live" onclick="switchPage('live')">
+      <i class="ph ph-pulse"></i>
+      <span data-i="navLive">Live Stream</span>
+      <span class="nav-badge" id="liveBadge">0</span>
+    </a>
+    <a class="nav-item" data-page="logs" onclick="switchPage('logs')">
+      <i class="ph ph-list-bullets"></i>
+      <span data-i="navLogs">System Logs</span>
+    </a>
+    <a class="nav-item" data-page="settings" onclick="switchPage('settings')">
+      <i class="ph ph-gear"></i>
+      <span data-i="navSettings">Settings</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="sidebar-btn" onclick="toggleLang()" id="langBtn" title="Language">
+      <i class="ph ph-translate"></i> <span>EN</span>
+    </button>
+    <button class="sidebar-btn" onclick="toggleTheme()" id="themeBtn" title="Theme">
+      <i class="ph ph-moon"></i>
+    </button>
+    <button class="sidebar-btn" onclick="refreshAll()" title="Refresh">
+      <i class="ph ph-arrows-clockwise"></i>
+    </button>
+    <button class="sidebar-btn" onclick="togglePrivacy()" id="privacyBtn" title="Privacy Mode">
+      <i class="ph ph-eye"></i>
+    </button>
+  </div>
+</aside>
+
+<!-- Main content -->
+<main class="main" id="main">
+
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-title" id="pageTitle" data-i="navOverview">Overview</h1>
+      <span class="meta" id="lastUp"></span>
+    </div>
+  </header>
+
+  <!-- PAGE: Overview -->
+  <div class="page active" id="page-overview">
+    <!-- Data source tabs (auto-hidden if only one source) -->
+    <div class="source-tabs" id="sourceTabs" style="display:none;margin-bottom:12px">
+      <button class="pill on" data-source="all" onclick="switchSource('all')">All</button>
+      <button class="pill" data-source="claude" onclick="switchSource('claude')"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;margin-right:4px"></span>Claude Code</button>
+      <button class="pill" data-source="codex" onclick="switchSource('codex')"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;margin-right:4px"></span>Codex CLI</button>
+    </div>
+
+    <!-- Gauge + Status row -->
+    <div class="overview-top" id="overviewTop">
+      <div class="gauge-card card" id="gaugeCard">
+        <div class="gauge-wrap">
+          <!-- 5h HUD Gauge -->
+          <div class="hud-gauge" id="hud5h">
+            <svg viewBox="0 0 200 120" class="hud-svg">
+              <defs>
+                <linearGradient id="g5h" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#00ff88"/><stop offset="40%" stop-color="#4ade80"/><stop offset="70%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#00e5ff"/></linearGradient>
+                <linearGradient id="g7d" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#4facfe"/><stop offset="40%" stop-color="#60a5fa"/><stop offset="70%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#e040fb"/></linearGradient>
+                <filter id="glow5h"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <!-- Segmented track (half-circle arc) -->
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--bg-4)" stroke-width="4" opacity="0.3"/>
+              <!-- Tick marks on arc -->
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--bg-5)" stroke-width="4" stroke-dasharray="2 22.8" opacity="0.4"/>
+              <!-- Fill arc -->
+              <path class="hud-fill" id="gaugeFill" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#g5h)" stroke-width="8" stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="251.33" filter="url(#glow5h)"/>
+              <!-- Scanning line -->
+              <line class="hud-scan" x1="100" y1="100" x2="100" y2="22" stroke="url(#g5h)" stroke-width="1" opacity="0.15"/>
+              <!-- Center value -->
+              <text x="100" y="78" text-anchor="middle" class="hud-value" id="gaugeVal">0%</text>
+              <text x="100" y="95" text-anchor="middle" class="hud-label">5H WINDOW</text>
+              <!-- Min/Max labels -->
+              <text x="22" y="115" class="hud-tick-label">0</text>
+              <text x="178" y="115" class="hud-tick-label">100</text>
+            </svg>
+            <div class="gauge-timer"><i class="ph ph-clock"></i> <span class="cd" id="cd">--:--:--</span></div>
+          </div>
+          <!-- 7d HUD Gauge -->
+          <div class="hud-gauge" id="hud7d">
+            <svg viewBox="0 0 200 120" class="hud-svg">
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--bg-4)" stroke-width="4" opacity="0.3"/>
+              <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--bg-5)" stroke-width="4" stroke-dasharray="2 22.8" opacity="0.4"/>
+              <filter id="glow7d"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <path class="hud-fill" id="weekGaugeFill" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#g7d)" stroke-width="8" stroke-linecap="round" stroke-dasharray="251.33" stroke-dashoffset="251.33" filter="url(#glow7d)"/>
+              <line class="hud-scan" x1="100" y1="100" x2="100" y2="22" stroke="url(#g7d)" stroke-width="1" opacity="0.15"/>
+              <text x="100" y="78" text-anchor="middle" class="hud-value" id="weekGaugeVal">—</text>
+              <text x="100" y="95" text-anchor="middle" class="hud-label">7D WINDOW</text>
+              <text x="22" y="115" class="hud-tick-label">0</text>
+              <text x="178" y="115" class="hud-tick-label">100</text>
+            </svg>
+            <div class="gauge-sub" id="weekTokens">— tokens</div>
+          </div>
+          <div class="gauge-meta">
+            <div class="gauge-plan"><span data-i="plan">Plan</span>: <b id="pName">—</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="today-card card">
+        <div class="today-row">
+          <div class="today-item"><span class="today-num" id="tMsg">0</span><span class="today-label" data-i="msgs">Messages</span></div>
+          <div class="today-item"><span class="today-num" id="tSes">0</span><span class="today-label" data-i="sessions_l">Sessions</span></div>
+          <div class="today-item"><span class="today-num" style="color:var(--orange)" id="rpmVal">0</span><span class="today-label">RPM</span></div>
+          <div class="today-item"><span class="today-num" style="color:var(--cyan,var(--blue))" id="tpmVal">0</span><span class="today-label">TPM</span></div>
+        </div>
+        <div class="today-row" style="margin-top:8px">
+          <div class="today-item"><span class="today-num" style="font-size:20px;color:var(--purple)" id="avgDurVal">—</span><span class="today-label" data-i="avgDuration">Avg Duration</span></div>
+          <div class="today-item"><span class="today-num" style="font-size:20px;color:var(--green)" id="avgTtftVal">—</span><span class="today-label" data-i="avgTtft">Avg TTFT</span></div>
+          <div class="today-item"><span class="today-num" style="font-size:18px;color:var(--red)" id="burnRate">—</span><span class="today-label">Tok/min <span id="burnBadge" style="font-size:9px;font-weight:700"></span></span></div>
+          <div class="today-item"><span class="today-num" style="font-size:18px;color:var(--green)" id="projCost">—</span><span class="today-label" data-i="projection">Projection</span></div>
+        </div>
+        <div class="week-bar">
+          <span class="week-label" data-i="weekUsage">Weekly</span>
+          <div class="week-dots" id="weekDots"></div>
+          <span class="week-val" id="weekPct">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="stat-cards">
+      <div class="stat-card card">
+        <div class="stat-header"><div class="stat-icon si-a"><i class="ph ph-chat-circle"></i></div><span class="stat-badge" id="bdToday">—</span></div>
+        <div class="stat-value" id="cMsg">—</div>
+        <div class="stat-label" data-i="totalMsgs">Total Messages</div>
+        <svg class="sparkline" id="sparkMsgs" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+        <div class="stat-sub"><span><span data-i="sessions_l">Sessions</span>: <b id="cSes">—</b></span><span><span data-i="projects">Projects</span>: <b id="cProj">—</b></span></div>
+      </div>
+      <div class="stat-card card">
+        <div class="stat-header"><div class="stat-icon si-b"><i class="ph ph-coins"></i></div><span class="cost-badge" id="totalCost">$0.00</span></div>
+        <div class="stat-value" id="cTok">—</div>
+        <div class="stat-label" data-i="totalTokens">Total Tokens</div>
+        <svg class="sparkline" id="sparkTokens" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+        <div class="stat-sub"><span><span class="tk-in">↓</span> <b id="cIn">—</b></span><span><span class="tk-out">↑</span> <b id="cOut">—</b></span></div>
+      </div>
+      <div class="stat-card card">
+        <div class="stat-header"><div class="stat-icon si-g"><i class="ph ph-lightning"></i></div><span id="cacheGrade" style="font:700 11px var(--font);padding:3px 10px;border-radius:20px;background:var(--green-bg)">—</span></div>
+        <div class="stat-value" id="cCR">—</div>
+        <div class="stat-label" data-i="cacheHit">Cache Hit</div>
+        <svg class="sparkline" id="sparkCache" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+        <div class="stat-sub"><span><span data-i="cacheCreate">Created</span>: <b id="cCC">—</b></span><span><span data-i="hitRate">Hit Rate</span>: <b id="cRate">—</b></span></div>
+      </div>
+      <div class="stat-card card">
+        <div class="stat-header"><div class="stat-icon si-p"><i class="ph ph-cpu"></i></div></div>
+        <div class="stat-value" id="cModels">—</div>
+        <div class="stat-label" data-i="modelCount">Models</div>
+        <svg class="sparkline" id="sparkModels" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+        <div class="stat-sub"><span><span data-i="todayCalls">Today</span>: <b id="cTodayCalls">—</b></span><span><span data-i="todayTools">Tools</span>: <b id="cTodayTools">—</b></span></div>
+      </div>
+    </div>
+
+    <!-- Today's Model Breakdown -->
+    <div class="card sec" id="todayBreakdown" style="margin-bottom:16px">
+      <div class="sec-header">
+        <div>
+          <div class="sec-title"><i class="ph ph-receipt"></i> <span data-i="todayBreakdown">Today's Cost by Model</span></div>
+          <div class="sec-desc" data-i="todayBreakdownDesc">Per-model calls, tokens and cost for today</div>
+        </div>
+        <span class="meta" id="todayDate"></span>
+      </div>
+      <div id="todayBreakdownContent"></div>
+    </div>
+
+    <!-- Active sessions -->
+    <div id="activeSessionsWrap" style="display:none">
+      <div class="active-card card">
+        <div class="active-head"><div class="active-title"><span class="live-dot"></span> <span data-i="activeSessions">Active Sessions</span></div><span class="active-count" id="activeCount">0</span></div>
+        <div class="active-list" id="activeList"></div>
+      </div>
+    </div>
+
+    <!-- Daily/Weekly Comparison (click to flip) -->
+    <div class="card sec" id="weeklyCompare" style="display:none">
+      <div class="sec-title compare-toggle" id="compareToggle" onclick="toggleCompareMode()"><i class="ph ph-arrows-left-right"></i> <span id="compareTitle">Day over Day</span></div>
+      <div class="flip-container"><div class="flip-inner" id="compareFlip"><div class="flip-front" id="weekCompareContent"></div></div></div>
+    </div>
+
+    <!-- Charts section -->
+    <div class="card chart-section">
+      <div class="chart-header">
+        <div><div class="sec-title" data-i="dailyTrend">Daily Trend</div><div class="sec-desc" data-i="dailyTrendDesc">Messages, sessions and tool calls</div></div>
+        <div class="chart-controls">
+          <div class="tabs"><div class="tab on" onclick="swTab('act')" data-i="dailyTrend">Trend</div><div class="tab" onclick="swTab('tok')" data-i="tokenDist">Token</div><div class="tab" onclick="swTab('hm')" data-i="heatmap">Heatmap</div></div>
+          <div class="range-pills"><div class="pill" onclick="setRange('24h')">24H</div><div class="pill on" onclick="setRange('7d')">7D</div><div class="pill" onclick="setRange('14d')">14D</div><div class="pill" onclick="setRange('30d')">30D</div><div class="pill" onclick="setRange('60d')">60D</div><div class="pill" onclick="setRange('90d')">90D</div><div class="pill" onclick="setRange('monthly')" data-i="monthly">Monthly</div></div>
+        </div>
+      </div>
+      <div class="ch-wrap" id="pAct"><div id="chartAct"></div></div>
+      <div class="ch-wrap" id="pTok" style="display:none"><div id="chartTok"></div></div>
+      <div class="ch-wrap hm-wrap" id="pHm" style="display:none"><div id="chartHm"></div></div>
+    </div>
+  </div>
+
+  <!-- PAGE: Analytics -->
+  <div class="page" id="page-analytics">
+    <div class="analytics-grid">
+      <div class="card sec"><div class="sec-title"><i class="ph ph-cpu"></i> <span data-i="modelUsage">Model Usage</span></div><div class="sec-desc" data-i="modelUsageDesc">Token usage and cache efficiency</div><div class="tw"><table><thead><tr><th data-i="model">Model</th><th>Provider</th><th data-i="input">Input</th><th data-i="output">Output</th><th data-i="cacheRead">Cache R</th><th data-i="cacheCreate">Cache W</th><th data-i="calls">Calls</th><th data-i="hitRate">Hit%</th><th data-i="ctxUsage">Ctx%</th><th>Cost</th></tr></thead><tbody id="tbMod"></tbody></table></div></div>
+      <div class="card sec"><div class="sec-title"><i class="ph ph-chart-pie-slice"></i> <span data-i="cacheAnalysis">Cache Analysis</span></div><div class="sec-desc" data-i="cacheAnalysisDesc">Cache hit rate distribution</div><div class="ring-c"><div class="ring-ch" id="chartRing"></div><div class="ring-info"><div data-i="cacheHit">Cache Hit</div><div class="ring-val"><span id="rlH">—</span></div><div data-i="cacheCreate">Cache Create</div><div class="ring-val"><span id="rlC">—</span></div><div data-i="directInput">Direct Input</div><div class="ring-val"><span id="rlD">—</span></div></div></div></div>
+    </div>
+    <div class="analytics-grid">
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-wrench"></i> <span data-i="toolUsage">Tool Distribution</span></div>
+        <div class="sec-desc" data-i="toolUsageDesc">Most used tools across all sessions</div>
+        <div class="ring-c"><div class="ring-ch" id="chartTools"></div>
+        <div class="ring-info" id="toolsList"></div></div>
+      </div>
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-clock-afternoon"></i> <span data-i="codingRhythm">Coding Rhythm</span></div>
+        <div class="sec-desc" data-i="codingRhythmDesc">Activity distribution by time of day</div>
+        <div id="rhythmBars" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <!-- Work Mode + Model DNA -->
+    <div class="analytics-grid">
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-strategy"></i> <span data-i="workMode">Work Mode</span></div>
+        <div class="sec-desc" data-i="workModeDesc">Exploration vs Building vs Execution</div>
+        <div id="workModeChart" style="margin-top:12px"></div>
+      </div>
+      <div class="card sec">
+        <div class="sec-title"><i class="ph ph-dna"></i> <span data-i="modelDNA">Model DNA</span></div>
+        <div class="sec-desc" data-i="modelDNADesc">Token distribution by model family</div>
+        <div id="modelDNAChart" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <div class="card sec"><div class="sec-title"><i class="ph ph-folder"></i> <span data-i="projectTop">Project TOP 10</span></div><div class="sec-desc" data-i="projectTopDesc">Projects by token usage</div><div class="tw"><table><thead><tr><th data-i="project">Project</th><th data-i="msgs">Msgs</th><th data-i="sessions_l">Sessions</th><th>Token</th><th>%</th><th data-i="projectCost">Cost</th></tr></thead><tbody id="tbProj"></tbody></table></div></div>
+  </div>
+
+  <!-- PAGE: Live Stream -->
+  <div class="page" id="page-live">
+    <div class="card sec">
+      <div class="sec-header"><div><div class="sec-title"><span class="live-dot"></span> <span data-i="liveLog">Today Live</span></div><div class="sec-desc" data-i="liveLogDesc">Real-time API call monitoring</div></div><span class="meta" id="liveN">0</span></div>
+      <div class="tw" style="max-height:460px;overflow-y:auto"><table><thead><tr><th data-i="time">Time</th><th data-i="model">Model</th><th data-i="project">Project</th><th><span class="tk-in">↓</span> Input</th><th><span class="tk-out">↑</span> Output</th><th><span class="tk-cr">⟲</span> Cache R</th><th><span class="tk-cw">⟳</span> Cache W</th><th style="color:var(--green)">$ Cost</th></tr></thead><tbody id="tbLive"></tbody></table></div>
+      <div class="totals"><div class="ti"><span class="tl">Calls</span><span class="tv" id="lCalls">0</span></div><div class="ti"><span class="tl tk-in">↓ Input</span><span class="tv" id="lIn">0</span></div><div class="ti"><span class="tl tk-out">↑ Output</span><span class="tv" id="lOut">0</span></div><div class="ti"><span class="tl tk-cr">⟲ Cache R</span><span class="tv" id="lCR">0</span></div><div class="ti"><span class="tl tk-cw">⟳ Cache W</span><span class="tv" id="lCC">0</span></div><div class="ti"><span class="tl" style="color:var(--green)">$ Cost</span><span class="tv" style="color:var(--green)" id="lCost">$0</span></div></div>
+    </div>
+  </div>
+
+  <!-- PAGE: System Logs -->
+  <div class="page" id="page-logs">
+    <div class="filter-panel card">
+      <div class="filter-header" id="filterToggle" onclick="toggleFilter()">
+        <div class="filter-title"><i class="ph ph-funnel"></i> <span data-i="filterTitle">Filters</span></div>
+        <i class="ph ph-caret-down filter-chevron"></i>
+      </div>
+      <div class="filter-body" id="filterBody">
+        <div class="filter-row">
+          <div class="filter-group"><label data-i="startDate">Start</label><input type="datetime-local" class="filter-input" id="filterStart"></div>
+          <div class="filter-group"><label data-i="endDate">End</label><input type="datetime-local" class="filter-input" id="filterEnd"></div>
+          <div class="filter-group"><label data-i="model">Model</label><select class="filter-select" id="filterModel"><option value="" data-i="allModels">All Models</option></select></div>
+          <div class="filter-group"><label data-i="project">Project</label><select class="filter-select" id="filterProject"><option value="" data-i="allProjects">All Projects</option></select></div>
+          <div class="filter-actions">
+            <button class="btn btn-accent" onclick="applyLogFilters()"><i class="ph ph-check"></i> <span data-i="apply">Apply</span></button>
+            <button class="btn" onclick="resetLogFilters()"><i class="ph ph-x"></i> <span data-i="resetFilters">Reset</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card sec">
+      <div class="sec-header">
+        <div><div class="sec-title"><i class="ph ph-list-bullets"></i> <span data-i="usageLog">Usage Logs</span></div><div class="sec-desc" data-i="usageLogDesc">Detailed API call records</div></div>
+        <div class="sec-header-right"><button class="btn" onclick="exportData('csv')" title="Export CSV"><i class="ph ph-download"></i> <span data-i="exportCSV">CSV</span></button><button class="btn" onclick="exportData('json')" title="Export JSON" style="margin-left:4px"><i class="ph ph-download"></i> <span data-i="exportJSON">JSON</span></button><span class="meta" id="logTotal" style="margin-left:8px">—</span><button class="auto-refresh-btn active" id="autoRefreshBtn" onclick="toggleAutoRefresh()"><span class="ar-dot"></span><span id="autoRefreshText" data-i="stopAutoRefresh">Stop Auto-refresh</span></button></div>
+      </div>
+      <div class="tw"><table><thead><tr><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="model">Model</th><th><span class="tk-in">↓</span> Input</th><th><span class="tk-out">↑</span> Output</th><th><span class="tk-cw">⟳</span> Cache W</th><th><span class="tk-cr">⟲</span> Cache R</th><th style="color:var(--green)">$ Cost</th><th data-i="ttft">TTFT</th><th data-i="duration">Duration</th><th data-i="status">Status</th></tr></thead><tbody id="tbLogs"></tbody></table></div>
+      <div class="pagination">
+        <div class="pagination-left">
+          <div class="pagination-info" id="paginationInfo">—</div>
+          <select id="logLimitSel" class="page-size-select" onchange="logLimit=parseInt(this.value);logPage=0;loadLogs()"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select>
+          <span class="pagination-per" data-i="perPage">per page</span>
+        </div>
+        <div class="pagination-btns" id="paginationBtns"></div>
+      </div>
+    </div>
+    <!-- Session browser -->
+    <div class="card sec">
+      <div class="sec-title" style="justify-content:space-between"><span><i class="ph ph-clock-counter-clockwise"></i> <span data-i="recentSessions">Recent Sessions</span></span><select id="sFilt" onchange="loadSess()" class="filter-select" style="min-width:120px"><option value="" data-i="allProjects">All</option></select></div>
+      <div class="sec-desc" data-i="recentSessionsDesc">Recently active sessions</div>
+      <div class="search-box"><input class="search-input" id="sSearch" oninput="debounceSearch()" placeholder="Search sessions..."><button class="btn" onclick="loadSess()"><i class="ph ph-magnifying-glass"></i> <span data-i="search">Search</span></button></div>
+      <div class="tw" style="max-height:400px;overflow-y:auto"><table><thead><tr><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="content">Content</th></tr></thead><tbody id="tbSess"></tbody></table></div>
+    </div>
+    <!-- Web Conversations -->
+    <div class="card sec" id="webConvSection" style="display:none">
+      <div class="sec-header">
+        <div>
+          <div class="sec-title"><i class="ph ph-globe"></i> <span data-i="webConversations">Web & Desktop</span></div>
+          <div class="sec-desc" data-i="webConversationsDesc">Conversations from claude.ai web, desktop app & SDK</div>
+        </div>
+        <button class="btn" onclick="loadWebConversations()"><i class="ph ph-arrows-clockwise"></i></button>
+      </div>
+      <div id="webConvList"></div>
+    </div>
+  </div>
+
+  <!-- PAGE: Settings -->
+  <div class="page" id="page-settings">
+    <div class="card sec" style="max-width:800px">
+      <div class="sec-title"><i class="ph ph-key"></i> <span data-i="apiConfig">API Configuration</span></div>
+      <div class="sec-desc" data-i="apiConfigDesc">Claude.ai session key for quota tracking</div>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+        <div>
+          <label style="font:600 10px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px">Session Key</label>
+          <input type="password" id="settingSessionKey" class="filter-input" style="width:100%" placeholder="sk-ant-sid02-...">
+        </div>
+        <div>
+          <label style="font:600 10px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px">Organization ID</label>
+          <input type="text" id="settingOrgId" class="filter-input" style="width:100%" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+        </div>
+        <button class="btn btn-accent" onclick="saveApiConfig()"><i class="ph ph-floppy-disk"></i> <span data-i="save">Save</span></button>
+      </div>
+    </div>
+
+    <div class="card sec" style="max-width:800px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="sec-title"><i class="ph ph-currency-dollar"></i> <span data-i="modelPricing">Model Pricing</span></div>
+          <div class="sec-desc" data-i="modelPricingDesc">Custom pricing for non-Anthropic models (per million tokens)</div>
+        </div>
+        <button class="btn" onclick="addPricingRow()"><i class="ph ph-plus"></i> <span data-i="addModel">Add Model</span></button>
+      </div>
+      <div id="pricingTable" style="margin-top:16px"></div>
+      <button class="btn btn-accent" onclick="savePricing()" style="margin-top:12px"><i class="ph ph-floppy-disk"></i> <span data-i="savePricing">Save Pricing</span></button>
+    </div>
+
+    <div class="card sec" style="max-width:800px;margin-top:16px">
+      <div class="sec-title"><i class="ph ph-plugs"></i> <span data-i="dataSources">Data Sources</span></div>
+      <div class="sec-desc" data-i="dataSourcesDesc">Detected CLI tool data</div>
+      <div id="dataSourcesList" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card sec" style="max-width:800px;margin-top:16px">
+      <div class="sec-title"><i class="ph ph-info"></i> <span data-i="detectedModels">Detected Models</span></div>
+      <div class="sec-desc" data-i="detectedModelsDesc">Models found in your usage data</div>
+      <div id="detectedModelsList" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- Session Detail Modal -->
+  <div class="modal-overlay" id="sessionModal" style="display:none" onclick="closeSessionModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-close" onclick="closeSessionModal()"><i class="ph ph-x" style="font-size:20px;color:var(--text-1);cursor:pointer"></i></div>
+      <div id="sessionModalContent"></div>
+    </div>
+  </div>
+
+</main>
+
+<script src="app.js?v=2"></script>
+</body>
+</html>
