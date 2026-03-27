@@ -5,6 +5,46 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.9.0] — 2026-03-27
+
+### 🚀 New Features
+
+#### Multi-Account Support (v0.9.0)
+- **Multiple Claude accounts** — configure personal + work accounts with separate quota tracking
+- **Per-account quota display** in Settings with utilization percentage
+- **Legacy fallback** — single session_key/org_id config still works
+- **`/api/accounts`** — returns all accounts with real-time quota data
+
+#### Session Replay (v0.9.1)
+- **Play/Pause/Reset** controls in Session Detail modal
+- **Speed control** — 1x / 2x / 4x playback speed
+- Events appear one by one with smooth animation + auto-scroll
+- Replay controls integrated into the existing action bar
+
+#### Plugin System (v0.9.2)
+- **Plugin discovery** — auto-scan `plugins/` directory for `.py` files
+- **Plugin metadata** — read `# name:`, `# description:`, `# version:` from file headers
+- **Built-in plugins** — Claude Code and Codex CLI shown as built-in data sources
+- **Plugin management** in Settings page with enable/disable status
+- **`/api/plugins`** — list all discovered plugins with status
+
+### 🚀 新功能
+
+#### 多账户支持 (v0.9.0)
+- **多 Claude 账户** — 配置个人和工作账户，分别追踪额度
+- **账户额度显示** — 设置页显示每个账户的使用率
+
+#### 会话回放 (v0.9.1)
+- **播放/暂停/重置** — 会话详情弹窗中的回放控件
+- **速度控制** — 1x / 2x / 4x 播放速度
+- 事件逐条展示，带动画和自动滚动
+
+#### 插件系统 (v0.9.2)
+- **插件发现** — 自动扫描 `plugins/` 目录
+- **插件管理** — 设置页显示所有插件状态
+
+---
+
 ## [0.8.0] — 2026-03-27
 
 ### 🚀 New Features

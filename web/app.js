@@ -71,7 +71,10 @@ const I18N = {
     totalCommits:'总 commit', aiAssistedPct:'AI 辅助率', avgCostPerCommit:'每 commit 成本',
     webhookConfig:'Webhook 通知', webhookConfigDesc:'通过 Slack、Discord 或 HTTP 接收告警',
     webhookUrl:'Webhook URL', testWebhook:'测试', enabled:'已启用',
-    commit:'提交', aiCost:'AI 成本'
+    commit:'提交', aiCost:'AI 成本',
+    accounts:'多账户', accountsDesc:'管理多个 Claude 账户', addAccount:'添加账户', accountName:'账户名称',
+    replay:'会话回放', replayPlay:'播放', replayPause:'暂停', replaySpeed:'速度',
+    plugins:'插件', pluginsDesc:'数据源插件管理', pluginBuiltin:'内置', pluginCustom:'自定义'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -137,7 +140,10 @@ const I18N = {
     totalCommits:'Total Commits', aiAssistedPct:'AI Assisted', avgCostPerCommit:'Avg Cost/Commit',
     webhookConfig:'Webhook Notifications', webhookConfigDesc:'Get alerts via Slack, Discord, or HTTP webhook',
     webhookUrl:'Webhook URL', testWebhook:'Test', enabled:'Enabled',
-    commit:'Commit', aiCost:'AI Cost'
+    commit:'Commit', aiCost:'AI Cost',
+    accounts:'Multi-Account', accountsDesc:'Manage multiple Claude accounts', addAccount:'Add Account', accountName:'Account Name',
+    replay:'Session Replay', replayPlay:'Play', replayPause:'Pause', replaySpeed:'Speed',
+    plugins:'Plugins', pluginsDesc:'Data source plugin management', pluginBuiltin:'Built-in', pluginCustom:'Custom'
   }
 };
 let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
@@ -462,7 +468,7 @@ function switchPage(pageId) {
   if (pageId === 'live') { loadLive(); }
   if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); loadGitStats(); loadReport('weekly'); }
   if (pageId === 'logs') { loadLogs(); loadSess(); loadWebConversations(); }
-  if (pageId === 'settings') { loadSettings(); }
+  if (pageId === 'settings') { loadSettings(); loadAccounts(); loadPlugins(); }
 }
 
 function moveNavSlider(activeEl) {
@@ -1585,6 +1591,12 @@ async function showSessionDetail(sessionId) {
     <button class="btn" onclick="navigator.clipboard.writeText('${sessionId}');notyf.success(curLang==='zh'?'Session ID 已复制':'Session ID copied')"><i class="ph ph-copy"></i> ID</button>
     <button class="btn" onclick="navigator.clipboard.writeText('claude --resume ${sessionId}');notyf.success(curLang==='zh'?'Resume 命令已复制':'Resume command copied')"><i class="ph ph-terminal-window"></i> Resume</button>
     <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:document.querySelector('.modal-main-panel').scrollHeight,behavior:'smooth'})"><i class="ph ph-arrow-down"></i> ${curLang==='zh'?'底部':'Bottom'}</button>
+    <span style="border-left:1px solid var(--border-l);height:20px;margin:0 4px"></span>
+    <button class="btn" id="replayPlayBtn" onclick="toggleReplay()" title="${t.replay||'Replay'}"><i class="ph ph-play"></i></button>
+    <button class="btn" onclick="resetReplay()" title="Reset"><i class="ph ph-arrow-counter-clockwise"></i></button>
+    <button class="btn replay-speed-btn active" data-speed="1" onclick="setReplaySpeed(1)">1x</button>
+    <button class="btn replay-speed-btn" data-speed="2" onclick="setReplaySpeed(2)">2x</button>
+    <button class="btn replay-speed-btn" data-speed="4" onclick="setReplaySpeed(4)">4x</button>
   </div>`;
   const fab = `<div class="modal-fab">
     <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:0,behavior:'smooth'})" title="Top"><i class="ph ph-arrow-up"></i></button>
@@ -2328,6 +2340,130 @@ async function testWebhook() {
     if (r.ok) notyf.success(curLang==='zh'?'测试成功':'Test sent');
     else notyf.error(r.error||'Failed');
   } catch(e) { notyf.error(String(e)); }
+}
+
+/* ===== v0.9.0: Multi-Account ===== */
+async function loadAccounts() {
+  try {
+    const d = await api('/api/accounts');
+    const el = document.getElementById('accountsList');
+    if (!el || !d || !d.configured) return;
+    const t = I18N[curLang] || I18N.zh;
+    el.innerHTML = d.accounts.map(acc => {
+      const q = acc.quota || {};
+      const util = q.utilization || q.five_hour?.percent_used || 0;
+      const pct = Math.round(util);
+      const color = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--orange)' : 'var(--green)';
+      const err = q.error ? `<span style="font:400 10px var(--font);color:var(--red)">⚠ ${q.error}</span>` : '';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin:6px 0;border-radius:8px;background:var(--bg-3);border:1px solid var(--border-l)">
+        <i class="ph ph-user-circle" style="font-size:20px;color:var(--accent)"></i>
+        <div style="flex:1">
+          <div style="font:600 13px var(--font);color:var(--text-0)">${acc.name}</div>
+          <div style="font:400 10px var(--mono);color:var(--text-2)">${acc.org_id_masked||'—'}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font:700 16px var(--mono);color:${color}">${pct}%</div>
+          <div style="font:400 9px var(--font);color:var(--text-2)">5h quota ${err}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.warn('loadAccounts:', e); }
+}
+
+/* ===== v0.9.1: Session Replay ===== */
+let _replayState = { playing: false, index: 0, speed: 1, timer: null, events: [] };
+
+function startReplay() {
+  const events = document.querySelectorAll('.tl-event');
+  if (!events.length) return;
+  _replayState.events = events;
+  _replayState.index = 0;
+  _replayState.playing = true;
+
+  // Hide all events first
+  events.forEach(e => { e.style.opacity = '0'; e.style.transform = 'translateY(10px)'; e.style.transition = 'opacity .3s, transform .3s'; });
+
+  // Update button states
+  const playBtn = document.getElementById('replayPlayBtn');
+  if (playBtn) playBtn.innerHTML = '<i class="ph ph-pause"></i>';
+
+  _replayStep();
+}
+
+function _replayStep() {
+  if (!_replayState.playing || _replayState.index >= _replayState.events.length) {
+    _replayState.playing = false;
+    const playBtn = document.getElementById('replayPlayBtn');
+    if (playBtn) playBtn.innerHTML = '<i class="ph ph-play"></i>';
+    return;
+  }
+  const evt = _replayState.events[_replayState.index];
+  evt.style.opacity = '1';
+  evt.style.transform = 'translateY(0)';
+  evt.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  _replayState.index++;
+
+  const delay = {1: 800, 2: 400, 4: 150}[_replayState.speed] || 800;
+  _replayState.timer = setTimeout(_replayStep, delay);
+}
+
+function toggleReplay() {
+  if (_replayState.playing) {
+    _replayState.playing = false;
+    clearTimeout(_replayState.timer);
+    const playBtn = document.getElementById('replayPlayBtn');
+    if (playBtn) playBtn.innerHTML = '<i class="ph ph-play"></i>';
+  } else {
+    if (_replayState.index >= (_replayState.events?.length || 0)) _replayState.index = 0;
+    _replayState.playing = true;
+    const playBtn = document.getElementById('replayPlayBtn');
+    if (playBtn) playBtn.innerHTML = '<i class="ph ph-pause"></i>';
+    // Show all events up to current index
+    _replayState.events?.forEach((e, i) => { if (i < _replayState.index) { e.style.opacity = '1'; e.style.transform = 'translateY(0)'; }});
+    _replayStep();
+  }
+}
+
+function setReplaySpeed(spd) {
+  _replayState.speed = spd;
+  document.querySelectorAll('.replay-speed-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.speed) === spd));
+}
+
+function resetReplay() {
+  _replayState.playing = false;
+  clearTimeout(_replayState.timer);
+  _replayState.index = 0;
+  _replayState.events?.forEach(e => { e.style.opacity = '1'; e.style.transform = 'translateY(0)'; });
+  const playBtn = document.getElementById('replayPlayBtn');
+  if (playBtn) playBtn.innerHTML = '<i class="ph ph-play"></i>';
+}
+
+/* ===== v0.9.2: Plugins ===== */
+async function loadPlugins() {
+  try {
+    const d = await api('/api/plugins');
+    const el = document.getElementById('pluginsList');
+    if (!el || !d) return;
+    const t = I18N[curLang] || I18N.zh;
+    el.innerHTML = d.plugins.map(p => {
+      const typeBadge = p.type === 'builtin'
+        ? `<span style="font:600 8px var(--font);padding:2px 6px;border-radius:4px;background:var(--accent-bg,rgba(74,222,128,.1));color:var(--accent)">${t.pluginBuiltin||'Built-in'}</span>`
+        : `<span style="font:600 8px var(--font);padding:2px 6px;border-radius:4px;background:rgba(168,85,247,.1);color:#a855f7">${t.pluginCustom||'Custom'}</span>`;
+      const statusDot = p.status === 'active' ? 'var(--green)' : p.status === 'disabled' ? 'var(--orange)' : 'var(--red)';
+      const statusText = p.status === 'active' ? (curLang==='zh'?'运行中':'Active') : p.status === 'disabled' ? (curLang==='zh'?'已禁用':'Disabled') : (curLang==='zh'?'未检测':'Not detected');
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin:6px 0;border-radius:8px;background:var(--bg-3);border:1px solid var(--border-l)">
+        <i class="ph ph-plug" style="font-size:18px;color:var(--text-2)"></i>
+        <div style="flex:1">
+          <div style="font:600 13px var(--font);color:var(--text-0)">${p.name} ${typeBadge}</div>
+          <div style="font:400 10px var(--font);color:var(--text-2);margin-top:2px">${p.description||''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px">
+          <span style="width:7px;height:7px;border-radius:50%;background:${statusDot}"></span>
+          <span style="font:500 11px var(--font);color:var(--text-1)">${statusText}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.warn('loadPlugins:', e); }
 }
 
 /* ===== Init ===== */
