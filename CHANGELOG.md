@@ -5,6 +5,53 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.8.0] — 2026-03-27
+
+### 🚀 New Features
+
+#### Git Integration (v0.8.0)
+- **Per-commit AI cost** — correlates git commits with Claude sessions by time window
+- **Git stats summary** — total commits, AI-assisted percentage, avg cost per commit
+- **Commit table** — hash, subject, project, AI cost in Analytics page
+- **`/api/git-stats`** — scans `.git` in project directories, matches with session data
+
+#### Webhook & Notifications (v0.8.1)
+- **Webhook configuration** — add Slack, Discord, or generic HTTP webhook URLs in Settings
+- **Test webhook** — send a test payload to verify connectivity
+- **Background monitoring** — checks quota (>80%) and budget overrun every 5 minutes
+- **Auto-format** — detects Slack/Discord URLs and sends in their native format
+- **`POST /api/webhooks`** — save/test webhook configuration
+
+#### CLI Quick Command (v0.8.2)
+- **`ccdash-cli.py`** — standalone terminal tool, zero dependencies
+- **`status`** — quota gauge, today's stats, RPM/TPM, burn rate
+- **`top`** — project TOP 5 with progress bars
+- **`models`** — model cost breakdown table
+- **`budget`** — budget progress bars
+- **`live`** — recent API calls (tail -f style)
+- **`--server URL`** — connect to remote CCDash instance
+- **Colored output** with ANSI escape codes (`--no-color` to disable)
+
+### 🚀 新功能
+
+#### Git 关联分析 (v0.8.0)
+- **每 commit AI 成本** — 通过时间窗口关联 git commit 与 Claude 会话
+- **Git 统计摘要** — 总 commit 数、AI 辅助率、每 commit 平均成本
+- **Commit 表格** — 在分析页展示 hash、描述、项目、AI 成本
+
+#### Webhook 通知 (v0.8.1)
+- **Webhook 配置** — 在设置页添加 Slack / Discord / HTTP webhook
+- **测试 webhook** — 发送测试消息验证连通性
+- **后台监控** — 每 5 分钟检查额度（>80%）和预算超标
+- **自动格式** — 检测 Slack/Discord URL 并用原生格式发送
+
+#### CLI 快查命令 (v0.8.2)
+- **`ccdash-cli.py`** — 独立终端工具，零依赖
+- **5 个命令** — status / top / models / budget / live
+- **彩色终端输出** + `--no-color` 选项
+
+---
+
 ## [0.7.0] — 2026-03-27
 
 ### 🚀 New Features

@@ -66,7 +66,12 @@ const I18N = {
     weeklyReport:'周报', monthlyReport:'月报',
     current:'本期', previous:'上期', change:'变化',
     highlights:'亮点', avgDailyCost:'日均成本', topModel:'最活跃模型', mostActiveDay:'最活跃日',
-    savingPotential:'节省潜力'
+    savingPotential:'节省潜力',
+    gitStats:'Git 关联', gitStatsDesc:'每个 commit 的 AI 成本',
+    totalCommits:'总 commit', aiAssistedPct:'AI 辅助率', avgCostPerCommit:'每 commit 成本',
+    webhookConfig:'Webhook 通知', webhookConfigDesc:'通过 Slack、Discord 或 HTTP 接收告警',
+    webhookUrl:'Webhook URL', testWebhook:'测试', enabled:'已启用',
+    commit:'提交', aiCost:'AI 成本'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -127,7 +132,12 @@ const I18N = {
     weeklyReport:'Weekly', monthlyReport:'Monthly',
     current:'Current', previous:'Previous', change:'Change',
     highlights:'Highlights', avgDailyCost:'Avg Daily Cost', topModel:'Top Model', mostActiveDay:'Most Active Day',
-    savingPotential:'Saving potential'
+    savingPotential:'Saving potential',
+    gitStats:'Git Integration', gitStatsDesc:'AI cost per commit',
+    totalCommits:'Total Commits', aiAssistedPct:'AI Assisted', avgCostPerCommit:'Avg Cost/Commit',
+    webhookConfig:'Webhook Notifications', webhookConfigDesc:'Get alerts via Slack, Discord, or HTTP webhook',
+    webhookUrl:'Webhook URL', testWebhook:'Test', enabled:'Enabled',
+    commit:'Commit', aiCost:'AI Cost'
   }
 };
 let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
@@ -212,7 +222,7 @@ function switchSource(src) {
     loadLive(), loadLogs(), loadSess(), loadTools(), loadRhythm(),
     loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(),
     loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget(),
-    loadReport('weekly')
+    loadGitStats(), loadReport('weekly')
   ]).then(() => {
     if (main) {
       main.style.transition = 'opacity .2s ease-in, transform .2s ease-in';
@@ -868,6 +878,19 @@ async function api(p) {
     };
   }
 
+  if (path === 'git-stats') return {
+    projects:['CCDash','SEU-Thesis-LaTeX'],
+    commits:[
+      {hash:'23bd2c1',date:'2026-03-27',timestamp:'2026-03-27T10:30:00Z',subject:'fix: sync demo site with review fixes',project:'CCDash',ai_cost:42.50,ai_tokens:85000000},
+      {hash:'ccb4c86',date:'2026-03-27',timestamp:'2026-03-27T09:15:00Z',subject:'fix: critical bugs from code review',project:'CCDash',ai_cost:38.20,ai_tokens:72000000},
+      {hash:'8e49c30',date:'2026-03-27',timestamp:'2026-03-27T08:00:00Z',subject:'feat: v0.7.0 — Cost Insights, Budget, Reports',project:'CCDash',ai_cost:56.80,ai_tokens:110000000},
+      {hash:'a1b2c3d',date:'2026-03-26',timestamp:'2026-03-26T15:00:00Z',subject:'Update thesis chapter 3 methodology',project:'SEU-Thesis-LaTeX',ai_cost:12.40,ai_tokens:24000000},
+      {hash:'e4f5678',date:'2026-03-26',timestamp:'2026-03-26T11:00:00Z',subject:'Add bibliography entries',project:'SEU-Thesis-LaTeX',ai_cost:0,ai_tokens:0},
+    ],
+    trend:[{date:'2026-03-25',commits:3,ai_cost:28.50},{date:'2026-03-26',commits:2,ai_cost:12.40},{date:'2026-03-27',commits:3,ai_cost:137.50}],
+    summary:{total_commits:8,total_ai_cost:178.40,ai_assisted_pct:75,avg_cost_per_commit:22.30,projects_count:2}
+  };
+
   if (path === 'export') return null; // export not available in demo
 
   console.warn('Demo API: unhandled path', path);
@@ -930,7 +953,7 @@ function switchPage(pageId) {
   // Lazy load
   if (pageId === 'overview') { if (!chA) renderCharts(); loadTodayBreakdown(); loadRatePrediction(); loadInsights(); loadBudget(); }
   if (pageId === 'live') { loadLive(); }
-  if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); loadReport('weekly'); }
+  if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); loadGitStats(); loadReport('weekly'); }
   if (pageId === 'logs') { loadLogs(); loadSess(); loadWebConversations(); }
   if (pageId === 'settings') { loadSettings(); }
 }
@@ -2650,6 +2673,40 @@ async function loadReport(type) {
       ${d.highlights?.length?`<div style="font:600 11px var(--font);color:var(--text-1);margin-bottom:8px">${t.highlights||'Highlights'}</div><div class="report-highlights">${d.highlights.map(h=>`<div class="report-hl"><i class="ph ${h.icon}"></i><div><div style="font:400 10px var(--font);color:var(--text-2)">${curLang==='zh'?h.label_zh:h.label_en}</div><div style="font:700 13px var(--mono);color:var(--text-0)">${h.value}</div></div></div>`).join('')}</div>`:''}`;
   } catch(e) { console.warn('loadReport:', e); el.innerHTML = ''; }
 }
+
+/* ===== v0.8.0: Git Integration ===== */
+async function loadGitStats() {
+  try {
+    const d = await api('/api/git-stats' + sourceParam('?'));
+    const card = document.getElementById('gitStatsCard');
+    if (!d || !d.commits || !d.commits.length) { if(card) card.style.display='none'; return; }
+    if(card) card.style.display='';
+    const t = I18N[curLang] || I18N.zh;
+    const s = d.summary || {};
+    const summaryEl = document.getElementById('gitSummary');
+    if (summaryEl) {
+      summaryEl.innerHTML = `<div class="eff-grid" style="min-width:200px">
+        <div class="eff-stat"><div class="eff-stat-val">${s.total_commits||0}</div><div class="eff-stat-label">${t.totalCommits||'Commits'}</div></div>
+        <div class="eff-stat"><div class="eff-stat-val" style="color:var(--green)">${s.ai_assisted_pct||0}%</div><div class="eff-stat-label">${t.aiAssistedPct||'AI Assisted'}</div></div>
+        <div class="eff-stat"><div class="eff-stat-val" style="color:var(--blue)">$${s.avg_cost_per_commit||0}</div><div class="eff-stat-label">${t.avgCostPerCommit||'Avg/Commit'}</div></div>
+      </div>`;
+    }
+    const commitsEl = document.getElementById('gitCommits');
+    if (commitsEl) {
+      commitsEl.innerHTML = `<div class="tw" style="max-height:280px;overflow-y:auto"><table><thead><tr>
+        <th>${t.commit||'Commit'}</th><th>${t.project||'Project'}</th><th style="text-align:right">${t.aiCost||'AI Cost'}</th>
+      </tr></thead><tbody>${d.commits.slice(0,30).map(c=>`<tr>
+        <td><span class="mono" style="font-size:10px;color:var(--accent)">${c.hash}</span> <span style="font-size:11px">${c.subject}</span></td>
+        <td style="font-size:10px;color:var(--text-2)">${c.project}</td>
+        <td class="mono" style="text-align:right;color:${c.ai_cost>0?'var(--green)':'var(--text-2)'}">${c.ai_cost>0?'$'+c.ai_cost.toFixed(2):'—'}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+    }
+  } catch(e) { console.warn('loadGitStats:', e); }
+}
+
+/* ===== v0.8.1: Webhook ===== */
+async function saveWebhook() { notyf.success('Demo mode — webhook not saved'); }
+async function testWebhook() { notyf.success('Demo mode — test not sent'); }
 
 /* ===== Init ===== */
 async function init() {
