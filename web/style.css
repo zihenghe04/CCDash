@@ -582,3 +582,18 @@ tr:nth-child(even) td { background:var(--stripe); }
 /* ---- Clickable session row ---- */
 #tbSess tr { cursor:pointer; transition:background 0.15s; }
 #tbSess tr:hover { background:var(--bg-3); }
+
+/* ---- Web Conversations ---- */
+.web-conv-item { padding:12px 16px; border-radius:var(--radius-sm); cursor:pointer; transition:all .2s; border-bottom:1px solid var(--border-l); }
+.web-conv-item:hover { background:var(--accent-bg); transform:translateX(4px); }
+.web-conv-item:last-child { border-bottom:none; }
+.web-conv-header { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.web-conv-model { font:600 10px var(--mono); color:var(--accent); padding:2px 8px; background:var(--accent-bg); border-radius:8px; white-space:nowrap; }
+.web-conv-name { font:500 13px var(--font); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-0); }
+.web-conv-date { font:400 10px var(--mono); color:var(--text-2); white-space:nowrap; }
+.web-conv-summary { font:400 11px var(--font); color:var(--text-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ---- Entrypoint Badges ---- */
+.ep-badge { font:600 8px var(--font); padding:1px 6px; border-radius:4px; margin-left:4px; white-space:nowrap; vertical-align:middle; }
+.ep-desktop { background:var(--purple-bg); color:var(--purple); }
+.ep-sdk { background:rgba(251,191,36,0.1); color:var(--orange); }

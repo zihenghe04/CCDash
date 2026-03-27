@@ -5,6 +5,38 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.5.0] — 2026-03-27
+
+### 🚀 New Features
+
+#### claude.ai Web & Desktop Conversations
+- **Web conversations browser** — fetch and display all claude.ai web conversations via Swift helper script
+- **Desktop session separation** — sessions from Claude Desktop App split from CLI sessions, shown in "Web & Desktop" section
+- **Conversation detail modal** — view full chat timeline with scroll-to-top/bottom buttons
+- **Entrypoint tracking** — every session tagged with origin: `cli`, `claude-desktop`, `sdk-ts`, `sdk-cli`, `local-agent`
+- **Smart session routing** — same project's sessions auto-split: CLI → "Recent Sessions", Desktop/SDK → "Web & Desktop"
+
+### 🚀 新功能
+
+#### claude.ai 网页版 & 桌面客户端对话
+- **Web 对话浏览器** — 通过 Swift 脚本获取 claude.ai 所有网页对话
+- **桌面客户端会话分离** — Desktop App 会话与 CLI 会话分开展示
+- **对话详情弹窗** — 查看完整聊天时间轴，带滚动按钮
+- **来源追踪** — 每个会话标记来源：`cli`、`claude-desktop`、`sdk-ts`、`sdk-cli`、`local-agent`
+- **智能会话路由** — 同项目会话自动分流：CLI 在"最近会话"，桌面/SDK 在"Web & 客户端"
+
+### 🔧 Backend
+- `fetch-web-conversations.swift` — claude.ai chat API helper
+- `/api/web-conversations`, `/api/web-conversation-detail` endpoints
+- `entrypoint` field on sessions, live calls, and log entries
+- `session_entrypoints` tracking in scanner
+
+### 🐛 Fixes / 修复
+- Fixed `codex_model_names` undefined error in `api_models`
+- Fixed `import copy` missing at module level
+
+---
+
 ## [0.4.2] — 2026-03-27
 
 ### 🐛 Critical Fixes

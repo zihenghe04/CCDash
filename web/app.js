@@ -48,7 +48,8 @@ const I18N = {
     detectedModels:'检测到的模型', detectedModelsDesc:'在使用数据中发现的模型',
     dataSources:'数据源', dataSourcesDesc:'已检测到的 CLI 工具数据',
     claudeCode:'Claude Code', codexCli:'Codex CLI',
-    sourceCodex:'Codex', sourceClaude:'Claude'
+    sourceCodex:'Codex', sourceClaude:'Claude',
+    webConversations:'Web & 客户端', webConversationsDesc:'来自网页版、桌面客户端和 SDK 的会话'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -91,7 +92,8 @@ const I18N = {
     detectedModels:'Detected Models', detectedModelsDesc:'Models found in your usage data',
     dataSources:'Data Sources', dataSourcesDesc:'Detected CLI tool data',
     claudeCode:'Claude Code', codexCli:'Codex CLI',
-    sourceCodex:'Codex', sourceClaude:'Claude'
+    sourceCodex:'Codex', sourceClaude:'Claude',
+    webConversations:'Web & Desktop', webConversationsDesc:'Conversations from web, desktop app & SDK'
   }
 };
 let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
@@ -336,6 +338,15 @@ const MC = {
 function mC(m) { return MC[m] || '#2dd4bf'; }
 function mS(m) { return m.replace('claude-','').replace(/-\d{8}$/,''); }
 
+/* ---- Entrypoint Badge ---- */
+function epBadge(ep) {
+  if (!ep || ep === 'cli') return '';
+  if (ep === 'claude-desktop') return '<span class="ep-badge ep-desktop">Desktop</span>';
+  if (ep === 'sdk-ts' || ep === 'sdk-cli') return '<span class="ep-badge ep-sdk">SDK</span>';
+  if (ep === 'local-agent') return '<span class="ep-badge ep-sdk">Agent</span>';
+  return '<span class="ep-badge ep-sdk">' + ep + '</span>';
+}
+
 /* ---- API helper ---- */
 async function api(p) { try { return await (await fetch(p)).json(); } catch(e) { console.warn('API error:', p, e); return null; } }
 
@@ -396,7 +407,7 @@ function switchPage(pageId) {
   if (pageId === 'overview' && !chA) renderCharts();
   if (pageId === 'live') { loadLive(); }
   if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); }
-  if (pageId === 'logs') { loadLogs(); loadSess(); }
+  if (pageId === 'logs') { loadLogs(); loadSess(); loadWebConversations(); }
   if (pageId === 'settings') { loadSettings(); }
 }
 
@@ -933,9 +944,20 @@ function renderSessionsData(d) {
   if (!d) return;
   const sel = document.getElementById('sFilt');
   if (sel && sel.options.length <= 1 && d.projects) d.projects.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p.split('/').pop() || '~'; sel.appendChild(o); });
-  document.getElementById('tbSess').innerHTML = d.sessions.map(s =>
-    `<tr data-row-source="${s.source||'claude'}" onclick="showSessionDetail('${s.sessionId}')" title="${curLang==='zh'?'点击查看详情':'Click for details'}"><td>${fmtT(s.timestamp)}</td><td title="${s.project}">${s.projectShort}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
+  // Desktop/SDK entrypoints that should go to Web & Desktop section
+  const _desktopEntrypoints = ['claude-desktop', 'sdk-ts', 'sdk-cli', 'local-agent'];
+  const _isDesktopSession = s => _desktopEntrypoints.includes(s.entrypoint);
+
+  // CLI + Codex + remote (no entrypoint) sessions stay in main list
+  const cliSessions = d.sessions.filter(s => !_isDesktopSession(s));
+  document.getElementById('tbSess').innerHTML = cliSessions.map(s =>
+    `<tr data-row-source="${s.source||'claude'}" onclick="showSessionDetail('${s.sessionId}')" title="${curLang==='zh'?'点击查看详情':'Click for details'}"><td>${fmtT(s.timestamp)}</td><td title="${s.project}">${s.projectShort}${epBadge(s.entrypoint)}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
   ).join('');
+
+  // Desktop/SDK sessions → render in Web & Desktop section
+  const nonCliSessions = d.sessions.filter(s => _isDesktopSession(s));
+  window._allData._desktopSessions = nonCliSessions;
+  renderDesktopSessions(nonCliSessions);
 }
 
 async function loadSess() {
@@ -971,7 +993,7 @@ async function loadLive() {
       srcBadge = '<span style="font:600 7px var(--font);padding:0 4px;border-radius:3px;background:var(--green-bg,rgba(74,222,128,0.1));color:var(--green);margin-left:3px">CDX</span>';
     }
     const rowSrc = c.source || 'claude';
-    return `<tr data-row-source="${rowSrc}"><td>${fmtISO(c.timestamp)}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}${srcBadge}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono" style="color:var(--green)">${cost}</td></tr>`;
+    return `<tr data-row-source="${rowSrc}"><td>${fmtISO(c.timestamp)}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}${srcBadge}${epBadge(c.entrypoint)}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono" style="color:var(--green)">${cost}</td></tr>`;
   }).join('');
   document.getElementById('lCalls').textContent = d.totals.calls;
   document.getElementById('lIn').textContent = fmt(d.totals.input);
@@ -1044,7 +1066,7 @@ async function loadLogs() {
     }
     const rowCost = c.cost_usd != null ? '$'+c.cost_usd.toFixed(4) : '—';
     const logSrc = c.source || 'claude';
-    return `<tr data-row-source="${logSrc}"><td title="${c.timestamp}">${ts}</td><td style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}${cb}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono" style="color:var(--green)">${rowCost}</td><td class="mono ${tc}">${ttft}</td><td class="mono">${dur}</td><td><span class="badge ${sc}">${c.status||200}</span></td></tr>`;
+    return `<tr data-row-source="${logSrc}"><td title="${c.timestamp}">${ts}</td><td style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${c.project||'—'}${cb}${epBadge(c.entrypoint)}</td><td><span class="mdot" style="background:${mC(c.model)}"></span>${mS(c.model)}</td><td class="mono"><span class="tk-in">↓</span> ${fmt(c.input_tokens)}</td><td class="mono"><span class="tk-out">↑</span> ${fmt(c.output_tokens)}</td><td class="mono"><span class="tk-cw">⟳</span> ${fmt(c.cache_create)}</td><td class="mono"><span class="tk-cr">⟲</span> ${fmt(c.cache_read)}</td><td class="mono" style="color:var(--green)">${rowCost}</td><td class="mono ${tc}">${ttft}</td><td class="mono">${dur}</td><td><span class="badge ${sc}">${c.status||200}</span></td></tr>`;
   }).join('');
 
   const info = document.getElementById('paginationInfo');
@@ -1699,13 +1721,146 @@ function classifyProvider(model) {
   return 'Other';
 }
 
+/* ===== Web Conversations ===== */
+async function loadWebConversations() {
+  const section = document.getElementById('webConvSection');
+  const webConvs = await api('/api/web-conversations');
+  const hasWeb = Array.isArray(webConvs) && webConvs.length > 0;
+  const desktopSessions = window._allData._desktopSessions || [];
+  const hasDesktop = desktopSessions.length > 0;
+
+  if (!hasWeb && !hasDesktop) {
+    if (section) section.style.display = 'none';
+    return;
+  }
+  if (section) section.style.display = '';
+  renderWebAndDesktop(hasWeb ? webConvs : [], desktopSessions);
+}
+
+function renderDesktopSessions(sessions) {
+  // Called from renderSessionsData — just store for now, actual render happens in loadWebConversations
+  window._allData._desktopSessions = sessions;
+}
+
+function renderWebAndDesktop(webConvs, desktopSessions) {
+  const el = document.getElementById('webConvList');
+  if (!el) return;
+
+  let html = '';
+
+  // Desktop sessions first
+  if (desktopSessions.length > 0) {
+    html += `<div style="font:600 11px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;padding:8px 16px;display:flex;align-items:center;gap:6px"><span class="ep-badge ep-desktop">Desktop</span> ${desktopSessions.length} ${curLang==='zh'?'个会话':'sessions'}</div>`;
+    html += desktopSessions.map(s => {
+      const date = s.timestamp ? new Date(typeof s.timestamp === 'number' ? s.timestamp : s.timestamp).toLocaleDateString(curLang==='zh'?'zh-CN':'en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      const name = escHtml(s.firstPrompt || s.projectShort || (curLang==='zh'?'未命名':'Untitled'));
+      const proj = s.projectShort || '';
+      return `<div class="web-conv-item" onclick="showSessionDetail('${s.sessionId}')">
+        <div class="web-conv-header">
+          <span class="ep-badge ep-desktop">Desktop</span>
+          <span class="web-conv-name">${name}</span>
+          <span class="web-conv-date">${date}</span>
+        </div>
+        <div class="web-conv-summary">${proj}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Web conversations
+  if (webConvs.length > 0) {
+    html += `<div style="font:600 11px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;padding:8px 16px;display:flex;align-items:center;gap:6px;${desktopSessions.length?'margin-top:12px;border-top:1px solid var(--border-l);padding-top:16px':''}"><span class="ep-badge ep-web">Web</span> ${webConvs.length} ${curLang==='zh'?'个对话':'conversations'}</div>`;
+    html += renderWebConversationsHtml(webConvs);
+  }
+
+  el.innerHTML = html;
+}
+
+function renderWebConversationsHtml(conversations) {
+  return conversations.map(c => {
+    const date = c.updated_at || c.created_at;
+    const dateStr = date ? new Date(date).toLocaleDateString(curLang==='zh'?'zh-CN':'en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    const model = c.model ? c.model.replace('claude-','').replace(/-\d{8}$/,'') : '?';
+    const summary = escHtml((c.summary || '').slice(0, 100));
+    const name = escHtml(c.name || (curLang==='zh'?'未命名':'Untitled'));
+    const uuid = c.uuid || '';
+    return `<div class="web-conv-item" onclick="showWebConversation('${uuid}')">
+      <div class="web-conv-header">
+        <span class="web-conv-model">${model}</span>
+        <span class="web-conv-name">${name}</span>
+        <span class="web-conv-date">${dateStr}</span>
+      </div>
+      ${summary ? `<div class="web-conv-summary">${summary}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function showWebConversation(uuid) {
+  if (!uuid) return;
+  const modal = document.getElementById('sessionModal');
+  const content = document.getElementById('sessionModalContent');
+  modal.style.display = 'flex';
+  const t = I18N[curLang] || I18N.zh;
+  content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-2)">${t.loading||'Loading...'}</div>`;
+
+  const d = await api('/api/web-conversation-detail?id=' + encodeURIComponent(uuid));
+  if (!d || d.error) {
+    content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--red)">${escHtml(d?.error || 'Error')}</div>`;
+    return;
+  }
+
+  const msgs = d.messages || [];
+  const dateStr = d.created_at ? new Date(d.created_at).toLocaleDateString(curLang==='zh'?'zh-CN':'en-US',{year:'numeric',month:'short',day:'numeric'}) : '';
+  const modelStr = d.model ? d.model.replace('claude-','').replace(/-\d{8}$/,'') : '';
+
+  const eventsHtml = msgs.map(m => {
+    const isUser = m.sender === 'human';
+    const time = m.created_at ? fmtISO(m.created_at) : '';
+    const cls = isUser ? 'user' : 'assistant';
+    const label = isUser ? (t.sessUser || 'You') : (t.sessAssistant || 'Claude');
+    return `<div class="timeline-event ${cls}">
+      <div class="timeline-event-header">
+        <span class="timeline-event-type">${label}</span>
+        ${time ? `<span class="timeline-event-time">${time}</span>` : ''}
+      </div>
+      <div class="timeline-event-content">${escHtml(m.text || '')}</div>
+    </div>`;
+  }).join('');
+
+  const actionBar = `<div class="modal-actions">
+    <span style="font:500 10px var(--font);color:var(--text-2);padding:2px 8px;border-radius:12px;background:var(--blue-bg);color:var(--blue)"><i class="ph ph-globe"></i> claude.ai</span>
+    <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:document.querySelector('.modal-main-panel').scrollHeight,behavior:'smooth'})"><i class="ph ph-arrow-down"></i> ${curLang==='zh'?'底部':'Bottom'}</button>
+  </div>`;
+  const fab = `<div class="modal-fab">
+    <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:0,behavior:'smooth'})" title="Top"><i class="ph ph-arrow-up"></i></button>
+    <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:document.querySelector('.modal-main-panel').scrollHeight,behavior:'smooth'})" title="Bottom"><i class="ph ph-arrow-down"></i></button>
+  </div>`;
+
+  content.innerHTML = `<div class="modal-split">
+    <div class="modal-main-panel" style="width:100%">
+      <h3 style="font:700 18px var(--font);margin:0 0 8px">${escHtml(d.name || (curLang==='zh'?'对话':'Conversation'))}</h3>
+      ${actionBar}
+      <div style="font:400 12px var(--font);color:var(--text-2);margin-bottom:16px">
+        ${modelStr ? modelStr + ' &middot; ' : ''}${msgs.length} ${t.msgs || 'messages'}${dateStr ? ' &middot; ' + dateStr : ''}
+      </div>
+      <div class="modal-stats" style="grid-template-columns:repeat(3,1fr)">
+        <div class="modal-stat"><div class="modal-stat-val">${msgs.filter(m=>m.sender==='human').length}</div><div class="modal-stat-label">${t.sessUser||'User'}</div></div>
+        <div class="modal-stat"><div class="modal-stat-val">${msgs.filter(m=>m.sender==='assistant').length}</div><div class="modal-stat-label">${t.sessAssistant||'Assistant'}</div></div>
+        <div class="modal-stat"><div class="modal-stat-val">${msgs.length}</div><div class="modal-stat-label">${t.msgs||'Messages'}</div></div>
+      </div>
+      <div>${eventsHtml || `<div style="text-align:center;padding:40px;color:var(--text-2)">${t.noEvents||'No messages'}</div>`}</div>
+      ${fab}
+    </div>
+  </div>`;
+}
+
 /* ===== Init ===== */
 async function init() {
   try {
     // Load everything in parallel — don't block on slow remote calls
     await Promise.all([
       loadStatus(), loadOverview(), loadCharts(), loadModels(),
-      loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools()
+      loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(),
+      loadWebConversations()
     ]);
     notyf.success(curLang==='zh' ? 'Dashboard 加载完成' : 'Dashboard loaded');
   } catch(e) {
@@ -1727,7 +1882,7 @@ async function refreshAll() {
   document.getElementById('lastUp').textContent = curLang==='zh' ? '刷新中...' : 'Refreshing...';
   try {
     await api('/api/overview?refresh=1' + sourceParam());
-    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools()]);
+    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations()]);
     notyf.success(curLang==='zh' ? '已更新' : 'Updated');
   } catch { notyf.error(curLang==='zh' ? '刷新失败' : 'Refresh failed'); }
   document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
