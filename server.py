@@ -3617,15 +3617,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         else:
             risk = "safe"
 
-        # 5. Safe RPM suggestion: to last the remaining window, spread current calls evenly
-        safe_rpm = None
-        if minutes_to_throttle and minutes_to_throttle > 0 and burn_rpm > 0:
-            safe_rpm = round(burn_rpm * (remaining_pct / 100), 1)
-            safe_rpm = max(0.1, safe_rpm)
-
-        # 6. Historical throttle events (detect utilization jumps from ~100% to low%)
-        # This is approximated from the quota data patterns
-
         rate_5m = rates.get("5m", {})
         self.send_json({
             "utilization": cur_util,
@@ -3635,7 +3626,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "rates": rates,
             "minutes_to_throttle": minutes_to_throttle,
             "risk": risk,
-            "safe_rpm": safe_rpm,
             "rpm": rate_5m.get("rpm", 0),
             "tpm": rate_5m.get("tpm", 0),
         })

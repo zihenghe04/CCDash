@@ -52,7 +52,7 @@ const I18N = {
     webConversations:'Web & 客户端', webConversationsDesc:'来自网页版、桌面客户端和 SDK 的会话',
     todayBreakdown:'今日模型消耗', todayBreakdownDesc:'按模型统计今日调用次数、Token 和成本',
     mcpServers:'MCP 服务器', mcpServersDesc:'按服务器统计 MCP 工具使用', mcpTrend:'MCP 趋势', mcpTrendDesc:'内置工具 vs MCP 工具每日使用趋势',
-    ratePredict:'限速预测', riskLevel:'风险等级', timeToThrottle:'剩余可用时间', currentRpm:'RPM', currentTpm:'TPM', safeRpm:'安全 RPM',
+    ratePredict:'限速预测', riskLevel:'风险等级', timeToThrottle:'剩余可用时间', currentRpm:'RPM', currentTpm:'TPM',
     efficiency:'Prompt 效率', efficiencyDesc:'输出比率、缓存评级与交互模式分类', effTrend:'效率趋势', effTrendDesc:'每日输出比率与缓存命中率',
     outputRatio:'输出比率', cacheGrade:'缓存评级', sessionsAnalyzed:'分析会话数', interactionModes:'交互模式',
     modeExploration:'探索', modeBuilding:'构建', modeDebugging:'调试', modeReview:'审查',
@@ -120,7 +120,7 @@ const I18N = {
     webConversations:'Web & Desktop', webConversationsDesc:'Conversations from web, desktop app & SDK',
     todayBreakdown:"Today's Cost by Model", todayBreakdownDesc:'Per-model calls, tokens and cost for today',
     mcpServers:'MCP Servers', mcpServersDesc:'MCP tool usage by server', mcpTrend:'MCP Trend', mcpTrendDesc:'Built-in vs MCP tool usage over time',
-    ratePredict:'Rate Limit Prediction', riskLevel:'Risk Level', timeToThrottle:'Time to Throttle', currentRpm:'RPM', currentTpm:'TPM', safeRpm:'Safe RPM',
+    ratePredict:'Rate Limit Prediction', riskLevel:'Risk Level', timeToThrottle:'Time to Throttle', currentRpm:'RPM', currentTpm:'TPM',
     efficiency:'Prompt Efficiency', efficiencyDesc:'Output ratio, cache grade & interaction modes', effTrend:'Efficiency Trend', effTrendDesc:'Daily output ratio & cache rate',
     outputRatio:'Output Ratio', cacheGrade:'Cache Grade', sessionsAnalyzed:'Sessions Analyzed', interactionModes:'Interaction Modes',
     modeExploration:'Exploration', modeBuilding:'Building', modeDebugging:'Debugging', modeReview:'Review',
@@ -2105,12 +2105,6 @@ async function loadRatePrediction() {
     const btEl = document.getElementById('rpBurnTpm');
     if (btEl) btEl.textContent = fmt(d.tpm || 0);
 
-    // Safe RPM
-    const srEl = document.getElementById('rpSafeRpm');
-    if (srEl) {
-      srEl.textContent = d.safe_rpm ? d.safe_rpm.toFixed(1) : '—';
-      srEl.style.color = 'var(--green)';
-    }
   } catch(e) { console.warn('loadRatePrediction:', e); }
 }
 
@@ -2350,9 +2344,12 @@ async function testWebhook() {
 /* ===== Multi-select session compare ===== */
 function updateCompareBtn() {
   const checked = document.querySelectorAll('.sess-check:checked');
+  const show = checked.length >= 2;
+  const label = `${curLang==='zh'?'对比':'Compare'} (${checked.length})`;
+  // Update all compare buttons (main + web section)
   const btn = document.getElementById('compareBtn');
-  if (btn) btn.style.display = checked.length >= 2 ? '' : 'none';
-  if (btn && checked.length >= 2) btn.querySelector('span').textContent = `${curLang==='zh'?'对比':'Compare'} (${checked.length})`;
+  if (btn) { btn.style.display = show ? '' : 'none'; if (show) btn.querySelector('span').textContent = label; }
+  document.querySelectorAll('.compareBtn2').forEach(b => { b.style.display = show ? '' : 'none'; if (show) { const sp = b.querySelector('span'); if(sp) sp.textContent = label; }});
 }
 function toggleAllSessChecks(val) {
   document.querySelectorAll('.sess-check').forEach(c => c.checked = val);

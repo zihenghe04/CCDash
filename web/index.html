@@ -173,7 +173,6 @@
           <div class="rp-item"><span class="rp-val" id="rpTimeLeft">—</span><span class="rp-label" data-i="timeToThrottle">Time to Throttle</span></div>
           <div class="rp-item"><span class="rp-val" id="rpBurnRpm">—</span><span class="rp-label">RPM</span></div>
           <div class="rp-item"><span class="rp-val" id="rpBurnTpm">—</span><span class="rp-label">TPM</span></div>
-          <div class="rp-item"><span class="rp-val" id="rpSafeRpm">—</span><span class="rp-label" data-i="safeRpm">Safe RPM</span></div>
         </div>
       </div>
     </div>
@@ -406,7 +405,7 @@
           <div class="sec-title"><i class="ph ph-globe"></i> <span data-i="webConversations">Web & Desktop</span></div>
           <div class="sec-desc" data-i="webConversationsDesc">Conversations from claude.ai web, desktop app & SDK</div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center"><button class="btn" onclick="event.stopPropagation();loadWebConversations()"><i class="ph ph-arrows-clockwise"></i></button><i class="ph ph-caret-down" style="transition:transform .2s"></i></div>
+        <div style="display:flex;gap:6px;align-items:center"><button class="btn compareBtn2" style="display:none" onclick="event.stopPropagation();compareSelectedSessions()"><i class="ph ph-chart-bar"></i> <span data-i="compare">Compare</span></button><button class="btn" onclick="event.stopPropagation();loadWebConversations()"><i class="ph ph-arrows-clockwise"></i></button><i class="ph ph-caret-down" style="transition:transform .2s"></i></div>
       </div>
       <div id="webConvBody"><div id="webConvList"></div></div>
     </div>
