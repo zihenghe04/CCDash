@@ -73,7 +73,6 @@ const I18N = {
     webhookUrl:'Webhook URL', testWebhook:'测试', enabled:'已启用',
     commit:'提交', aiCost:'AI 成本',
     accounts:'多账户', accountsDesc:'管理多个 Claude 账户', addAccount:'添加账户', accountName:'账户名称',
-    replay:'会话回放', replayPlay:'播放', replayPause:'暂停', replaySpeed:'速度',
     plugins:'插件', pluginsDesc:'数据源插件管理', pluginBuiltin:'内置', pluginCustom:'自定义'
   },
   en: {
@@ -142,7 +141,6 @@ const I18N = {
     webhookUrl:'Webhook URL', testWebhook:'Test', enabled:'Enabled',
     commit:'Commit', aiCost:'AI Cost',
     accounts:'Multi-Account', accountsDesc:'Manage multiple Claude accounts', addAccount:'Add Account', accountName:'Account Name',
-    replay:'Session Replay', replayPlay:'Play', replayPause:'Pause', replaySpeed:'Speed',
     plugins:'Plugins', pluginsDesc:'Data source plugin management', pluginBuiltin:'Built-in', pluginCustom:'Custom'
   }
 };
@@ -1347,7 +1345,6 @@ function exportData(format) {
 /* ---- Session Detail Modal ---- */
 async function showSessionDetail(sessionId) {
   if (!sessionId) return;
-  resetReplay(); // Reset replay state when switching sessions
   const modal = document.getElementById('sessionModal');
   const content = document.getElementById('sessionModalContent');
   const isAlreadyOpen = modal.style.display === 'flex';
@@ -1592,12 +1589,6 @@ async function showSessionDetail(sessionId) {
     <button class="btn" onclick="navigator.clipboard.writeText('${sessionId}');notyf.success(curLang==='zh'?'Session ID 已复制':'Session ID copied')"><i class="ph ph-copy"></i> ID</button>
     <button class="btn" onclick="navigator.clipboard.writeText('claude --resume ${sessionId}');notyf.success(curLang==='zh'?'Resume 命令已复制':'Resume command copied')"><i class="ph ph-terminal-window"></i> Resume</button>
     <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:document.querySelector('.modal-main-panel').scrollHeight,behavior:'smooth'})"><i class="ph ph-arrow-down"></i> ${curLang==='zh'?'底部':'Bottom'}</button>
-    <span style="border-left:1px solid var(--border-l);height:20px;margin:0 4px"></span>
-    <button class="btn" id="replayPlayBtn" onclick="toggleReplay()" title="${t.replay||'Replay'}"><i class="ph ph-play"></i></button>
-    <button class="btn" onclick="resetReplay()" title="Reset"><i class="ph ph-arrow-counter-clockwise"></i></button>
-    <button class="btn replay-speed-btn active" data-speed="1" onclick="setReplaySpeed(1)">1x</button>
-    <button class="btn replay-speed-btn" data-speed="2" onclick="setReplaySpeed(2)">2x</button>
-    <button class="btn replay-speed-btn" data-speed="4" onclick="setReplaySpeed(4)">4x</button>
   </div>`;
   const fab = `<div class="modal-fab">
     <button class="btn" onclick="document.querySelector('.modal-main-panel').scrollTo({top:0,behavior:'smooth'})" title="Top"><i class="ph ph-arrow-up"></i></button>
@@ -2377,92 +2368,6 @@ async function loadAccounts() {
       </div>`;
     }).join('');
   } catch(e) { console.warn('loadAccounts:', e); }
-}
-
-/* ===== v0.9.1: Session Replay ===== */
-let _replayState = { playing: false, index: 0, speed: 1, timer: null, events: [] };
-
-function startReplay() {
-  const events = document.querySelectorAll('.timeline-event');
-  if (!events.length) return;
-  _replayState.events = events;
-  _replayState.index = 0;
-  _replayState.playing = true;
-
-  // Hide all events first
-  events.forEach(e => { e.style.opacity = '0'; e.style.transform = 'translateY(10px)'; e.style.transition = 'opacity .3s, transform .3s'; });
-
-  // Update button states
-  const playBtn = document.getElementById('replayPlayBtn');
-  if (playBtn) playBtn.innerHTML = '<i class="ph ph-pause"></i>';
-
-  _replayStep();
-}
-
-function _replayStep() {
-  if (!_replayState.playing || _replayState.index >= _replayState.events.length) {
-    _replayState.playing = false;
-    const playBtn = document.getElementById('replayPlayBtn');
-    if (playBtn) playBtn.innerHTML = '<i class="ph ph-play"></i>';
-    return;
-  }
-  const evt = _replayState.events[_replayState.index];
-  evt.style.opacity = '1';
-  evt.style.transform = 'translateY(0)';
-  evt.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  _replayState.index++;
-
-  const delay = {1: 800, 2: 400, 4: 150}[_replayState.speed] || 800;
-  _replayState.timer = setTimeout(_replayStep, delay);
-}
-
-function toggleReplay() {
-  if (_replayState.playing) {
-    // Pause
-    _replayState.playing = false;
-    clearTimeout(_replayState.timer);
-    const playBtn = document.getElementById('replayPlayBtn');
-    if (playBtn) playBtn.innerHTML = '<i class="ph ph-play"></i>';
-  } else {
-    // First click or resume — initialize events if needed
-    if (!_replayState.events || !_replayState.events.length) {
-      // Scope to modal's main panel to avoid picking up chain panel events
-      const panel = document.querySelector('.modal-main-panel') || document;
-      const events = panel.querySelectorAll('.timeline-event');
-      if (!events.length) { notyf.error(curLang==='zh'?'没有可回放的事件':'No events to replay'); return; }
-      _replayState.events = Array.from(events);
-      _replayState.index = 0;
-      // Hide all events
-      _replayState.events.forEach(e => { e.style.opacity = '0'; e.style.transform = 'translateY(10px)'; e.style.transition = 'opacity .3s, transform .3s'; });
-    }
-    if (_replayState.index >= _replayState.events.length) {
-      // Restart from beginning
-      _replayState.index = 0;
-      _replayState.events.forEach(e => { e.style.opacity = '0'; e.style.transform = 'translateY(10px)'; });
-    }
-    _replayState.playing = true;
-    const playBtn = document.getElementById('replayPlayBtn');
-    if (playBtn) playBtn.innerHTML = '<i class="ph ph-pause"></i>';
-    _replayStep();
-  }
-}
-
-function setReplaySpeed(spd) {
-  _replayState.speed = spd;
-  document.querySelectorAll('.replay-speed-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.speed) === spd));
-}
-
-function resetReplay() {
-  _replayState.playing = false;
-  clearTimeout(_replayState.timer);
-  // Restore all events to visible
-  if (_replayState.events && _replayState.events.length) {
-    _replayState.events.forEach(e => { e.style.opacity = '1'; e.style.transform = 'translateY(0)'; e.style.transition = 'none'; });
-  }
-  _replayState.events = [];
-  _replayState.index = 0;
-  const playBtn = document.getElementById('replayPlayBtn');
-  if (playBtn) playBtn.innerHTML = '<i class="ph ph-play"></i>';
 }
 
 /* ===== v0.9.2: Plugins ===== */
