@@ -5,6 +5,29 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.5.1] — 2026-03-27
+
+### 🚀 New Features
+- **Today's Model Cost Breakdown** — new overview card showing per-model calls, tokens, and cost for today with donut chart and legend list (same style as Tool Distribution)
+- **`/api/today-breakdown`** — new endpoint returning today's usage grouped by model with cost calculation
+
+### 🎨 UI
+- Donut chart with `ring-c` layout (chart + legend list with colored dots and glow)
+- Left-right split: table (Model/Calls/In/Out/Cache/Cost) + donut chart
+- Responsive: stacks vertically on mobile
+
+### 🐛 Fixes
+- **Distinct model colors** — each model now has a unique high-contrast color (Opus=orange, Sonnet=blue, Haiku=green, GPT=yellow/pink/teal) instead of similar shades
+
+### 🚀 新功能
+- **今日模型消耗明细** — 概览页新增卡片，按模型显示今日调用次数、Token 和成本，配有甜甜圈图和图例
+- **`/api/today-breakdown`** — 新端点，返回按模型分组的今日用量和成本
+
+### 🐛 修复
+- **模型颜色区分** — 每个模型独立高对比度颜色（Opus=橙、Sonnet=蓝、Haiku=绿、GPT=黄/粉/青），不再混淆
+
+---
+
 ## [0.5.0] — 2026-03-27
 
 ### 🚀 New Features
