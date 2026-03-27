@@ -5,6 +5,41 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.9.1] — 2026-03-27
+
+### 🚀 New Features
+- **Multi-select session compare** — checkbox sessions, aggregated stats modal with model/tool breakdown
+- **Analytics tabs** — Core / Advanced split to reduce scrolling (9 sections → 2 tabs)
+- **Collapsible sections** — Logs table, Recent Sessions, Web & Desktop all foldable
+
+### 🐛 Fixes
+- **RPM/TPM consistency** — rate prediction and overview now use same 5-minute window
+- **Git commit dedup** — worktrees no longer cause duplicate commits; cost evenly split per day
+- **Today messages** — unified to scanner-based count (was inconsistent between status and overview)
+- **Rate prediction** — fixed null minutes_to_throttle when idle; removed misleading "Safe RPM"
+- **Cost calculation** — fixed cache_create pricing fallback for GPT models
+- **Export** — now respects active data source filter
+- **Desktop checkboxes** — Web & Desktop sessions also multi-selectable
+
+### 🌐 i18n
+- Chinese README fully expanded: all features documented (智能洞察/预算/对比报告/Git/MCP/效率/多账户/插件)
+
+### 🚀 新功能
+- **多选会话对比** — 勾选会话，弹窗显示合并统计 + 模型/工具分布
+- **分析页标签页** — Core / Advanced 分组，减少滚动
+- **可折叠 section** — 日志表/最近会话/Web & 客户端均可折叠
+
+### 🐛 修复
+- RPM/TPM 概览与限速预测数据统一（5 分钟窗口）
+- Git commit 去重 + 成本按天均分
+- 今日消息数统一为扫描器数据
+- 限速预测：修复空闲时显示 ∞；移除无意义的"安全 RPM"
+- 成本计算：修复 GPT 模型 cache_create 定价回退
+- 导出：尊重数据源过滤
+- Desktop 会话也支持多选对比
+
+---
+
 ## [0.9.0] — 2026-03-27
 
 ### 🚀 New Features

@@ -99,8 +99,11 @@ You're paying for a Claude subscription. But do you actually know:
 ### ⌨️ CLI Quick Command
 > **`ccdash-cli.py`** — check usage from terminal · `status` / `top` / `models` / `budget` / `live` · colored output · `--server URL` for remote · zero dependencies
 
-### 📋 Session Detail
-> Click any session to open a full conversation timeline modal · user prompts & assistant responses with tool call badges · file operations tracking · session chain visualization (all sessions in the same project) · copy Session ID / `claude --resume` command · privacy mode to blur sensitive content
+### 📋 Session Detail & Compare
+> Click any session to open a full conversation timeline modal · user prompts & assistant responses with tool call badges · file operations tracking · session chain visualization · copy Session ID / `claude --resume` command · privacy mode · **multi-select compare** (checkbox sessions → aggregated stats + model/tool breakdown)
+
+### 👥 Multi-Account
+> Configure multiple Claude accounts (personal/work) · per-account 5h/7d quota tracking · Settings page real-time display
 
 ### 📡 Live Stream
 > Real-time API call feed · colored token indicators (↓ input ↑ output ⟲ cache read ⟳ cache write) · per-call cost · auto-refresh with pause control
@@ -461,6 +464,9 @@ cp config.example.json config.json
 | `remotes` | ❌ | 远程 Agent 端点，用于多服务器聚合 |
 | `claude_session_key` | ❌ | claude.ai Session Key，启用额度追踪 |
 | `claude_org_id` | ❌ | claude.ai 组织 ID |
+| `budget` | ❌ | 每日/每周/每月成本上限（USD） |
+| `webhooks` | ❌ | Webhook 告警端点（Slack/Discord/HTTP） |
+| `accounts` | ❌ | 多账户配置（name/session_key/org_id 数组） |
 
 ### 🔑 获取 Session Key（可选）
 
@@ -544,6 +550,36 @@ python3 ccdash-cli.py --server http://myserver:8420 status
 ```
 
 支持 Slack、Discord 和通用 HTTP Webhook。后台每 5 分钟检查一次触发条件（额度 >80%、每日预算超标）。
+
+---
+
+## 🚀 全部功能一览
+
+### 📈 实时概览
+> HUD 仪表盘（5h/7d 额度）· RPM/TPM · 消耗速率 · 成本预估 · 平均首字/耗时 · 日/周环比卡片翻转
+
+### ⚡ 限速预测
+> 风险等级（安全→紧急）· 剩余可用时间倒计时 · RPM/TPM 实时监控
+
+### 💡 智能优化建议
+> 模型降级建议（Opus → Sonnet 节省比例）· 缓存优化 · 成本异常检测 · 高峰时段提醒
+
+### 💰 预算管理
+> 设定每日/每周/每月成本上限 · 概览页实时进度条 · 超标告警（60%/80%/100%）
+
+### 📊 深度分析（Core + Advanced 标签页）
+> **Core**: 模型用量表 · 缓存分析环图 · 工具分布 · 编码节奏 · 工作模式 · 模型 DNA · 项目 TOP 10
+>
+> **Advanced**: MCP 服务器分析 · Prompt 效率（输出比率/缓存评级/交互模式）· Git 关联（每 commit AI 成本）· 周报/月报对比
+
+### 📋 会话管理
+> 会话详情时间轴 · 会话链追踪 · 复制 Session ID / Resume 命令 · **多选会话对比**（合并统计 + 图表弹窗）· 隐私模式
+
+### 👥 多账户
+> 配置多个 Claude 账户 · 分账户额度追踪 · 设置页实时显示
+
+### 🔌 插件系统
+> 自动发现 `plugins/` 目录 · 内置 Claude Code + Codex CLI · 可扩展自定义数据源
 
 ---
 

@@ -71,7 +71,7 @@ const I18N = {
     totalCommits:'总 commit', aiAssistedPct:'AI 辅助率', avgCostPerCommit:'每 commit 成本',
     webhookConfig:'Webhook 通知', webhookConfigDesc:'通过 Slack、Discord 或 HTTP 接收告警',
     webhookUrl:'Webhook URL', testWebhook:'测试', enabled:'已启用',
-    commit:'提交', aiCost:'AI 成本', compare:'对比',
+    commit:'提交', aiCost:'AI 成本', compare:'对比', analyticsCore:'核心', analyticsAdvanced:'高级',
     accounts:'多账户', accountsDesc:'管理多个 Claude 账户', addAccount:'添加账户', accountName:'账户名称',
     plugins:'插件', pluginsDesc:'数据源插件管理', pluginBuiltin:'内置', pluginCustom:'自定义'
   },
@@ -139,7 +139,7 @@ const I18N = {
     totalCommits:'Total Commits', aiAssistedPct:'AI Assisted', avgCostPerCommit:'Avg Cost/Commit',
     webhookConfig:'Webhook Notifications', webhookConfigDesc:'Get alerts via Slack, Discord, or HTTP webhook',
     webhookUrl:'Webhook URL', testWebhook:'Test', enabled:'Enabled',
-    commit:'Commit', aiCost:'AI Cost', compare:'Compare',
+    commit:'Commit', aiCost:'AI Cost', compare:'Compare', analyticsCore:'Core', analyticsAdvanced:'Advanced',
     accounts:'Multi-Account', accountsDesc:'Manage multiple Claude accounts', addAccount:'Add Account', accountName:'Account Name',
     plugins:'Plugins', pluginsDesc:'Data source plugin management', pluginBuiltin:'Built-in', pluginCustom:'Custom'
   }
@@ -2339,6 +2339,15 @@ async function testWebhook() {
     if (r.ok) notyf.success(curLang==='zh'?'测试成功':'Test sent');
     else notyf.error(r.error||'Failed');
   } catch(e) { notyf.error(String(e)); }
+}
+
+/* ===== Analytics tab switch ===== */
+function switchAnalyticsTab(tab) {
+  document.querySelectorAll('.analytics-tabs .pill').forEach(b => b.classList.toggle('on', b.dataset.atab === tab));
+  const core = document.getElementById('analytics-core');
+  const adv = document.getElementById('analytics-advanced');
+  if (core) core.style.display = tab === 'core' ? '' : 'none';
+  if (adv) adv.style.display = tab === 'advanced' ? '' : 'none';
 }
 
 /* ===== Multi-select session compare ===== */

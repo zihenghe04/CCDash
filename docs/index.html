@@ -264,6 +264,11 @@
 
   <!-- PAGE: Analytics -->
   <div class="page" id="page-analytics">
+    <div class="analytics-tabs" style="display:flex;gap:6px;margin-bottom:16px">
+      <button class="pill on" data-atab="core" onclick="switchAnalyticsTab('core')"><i class="ph ph-chart-pie-slice"></i> <span data-i="analyticsCore">Core</span></button>
+      <button class="pill" data-atab="advanced" onclick="switchAnalyticsTab('advanced')"><i class="ph ph-lightning"></i> <span data-i="analyticsAdvanced">Advanced</span></button>
+    </div>
+    <div id="analytics-core">
     <div class="analytics-grid">
       <div class="card sec"><div class="sec-title"><i class="ph ph-cpu"></i> <span data-i="modelUsage">Model Usage</span></div><div class="sec-desc" data-i="modelUsageDesc">Token usage and cache efficiency</div><div class="tw"><table><thead><tr><th data-i="model">Model</th><th>Provider</th><th data-i="input">Input</th><th data-i="output">Output</th><th data-i="cacheRead">Cache R</th><th data-i="cacheCreate">Cache W</th><th data-i="calls">Calls</th><th data-i="hitRate">Hit%</th><th data-i="ctxUsage">Ctx%</th><th>Cost</th></tr></thead><tbody id="tbMod"></tbody></table></div></div>
       <div class="card sec"><div class="sec-title"><i class="ph ph-chart-pie-slice"></i> <span data-i="cacheAnalysis">Cache Analysis</span></div><div class="sec-desc" data-i="cacheAnalysisDesc">Cache hit rate distribution</div><div class="ring-c"><div class="ring-ch" id="chartRing"></div><div class="ring-info"><div data-i="cacheHit">Cache Hit</div><div class="ring-val"><span id="rlH">—</span></div><div data-i="cacheCreate">Cache Create</div><div class="ring-val"><span id="rlC">—</span></div><div data-i="directInput">Direct Input</div><div class="ring-val"><span id="rlD">—</span></div></div></div></div>
@@ -295,6 +300,8 @@
       </div>
     </div>
     <div class="card sec"><div class="sec-title"><i class="ph ph-folder"></i> <span data-i="projectTop">Project TOP 10</span></div><div class="sec-desc" data-i="projectTopDesc">Projects by token usage</div><div class="tw"><table><thead><tr><th data-i="project">Project</th><th data-i="msgs">Msgs</th><th data-i="sessions_l">Sessions</th><th>Token</th><th>%</th><th data-i="projectCost">Cost</th></tr></thead><tbody id="tbProj"></tbody></table></div></div>
+    </div><!-- /analytics-core -->
+    <div id="analytics-advanced" style="display:none">
     <!-- v0.6.0: MCP Server Analytics -->
     <div class="analytics-grid">
       <div class="card sec">
@@ -343,6 +350,7 @@
       </div>
       <div id="reportContent" style="margin-top:12px"></div>
     </div>
+    </div><!-- /analytics-advanced -->
   </div>
 
   <!-- PAGE: Live Stream -->
