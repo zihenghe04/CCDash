@@ -473,11 +473,12 @@ def _scan_all_projects(force=False):
                         evt_type = evt.get("type", "")
                         ts = evt.get("timestamp", "")
 
-                        # Track entrypoint per session (last seen wins —
-                        # user may --resume from a different entrypoint)
+                        # Track entrypoint per session (majority wins —
+                        # session may be resumed from different entrypoints)
                         ep = evt.get("entrypoint", "")
                         if ep:
-                            session_entrypoints[session_id] = ep
+                            ep_counts = session_entrypoints.setdefault(session_id, {})
+                            ep_counts[ep] = ep_counts.get(ep, 0) + 1
 
                         if evt_type == "user" and "message" in evt:
                             date = ts_to_date(ts) if isinstance(ts, str) else ""
@@ -606,6 +607,11 @@ def _scan_all_projects(force=False):
         ts_entry["sessions"] = len(ts_entry.pop("sessions", set()))
     for mc_entry in mcp_stats.values():
         mc_entry["sessions"] = len(mc_entry.pop("sessions", set()))
+    # Resolve entrypoint counts → majority entrypoint per session
+    for sid in session_entrypoints:
+        counts = session_entrypoints[sid]
+        if isinstance(counts, dict):
+            session_entrypoints[sid] = max(counts, key=counts.get)
 
     elapsed = time.time() - t0
     print(f"  [Scanner] 扫描完成: {file_count} 文件, {total_messages} 消息, "
@@ -2439,6 +2445,71 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             })
             if len(unique_sessions) >= limit:
                 break
+
+        # Add desktop/SDK sessions that are NOT in history.jsonl
+        # (Desktop App sessions don't write to history.jsonl)
+        if source != "codex":
+            desktop_eps = {"claude-desktop", "sdk-ts", "sdk-cli", "local-agent"}
+            for sid, ep_val in ep_map.items():
+                if ep_val in desktop_eps and sid not in seen:
+                    seen.add(sid)
+                    # Find project from session file path
+                    proj_name = ""
+                    proj_short = "~"
+                    for proj_dir in PROJECTS_DIR.iterdir():
+                        if not proj_dir.is_dir():
+                            continue
+                        if (proj_dir / f"{sid}.jsonl").exists():
+                            proj_name = friendly_project_name(proj_dir.name)
+                            proj_short = proj_name
+                            break
+                    # Get timestamp from session file (first event)
+                    ts = 0
+                    first_prompt = ""
+                    for proj_dir in PROJECTS_DIR.iterdir():
+                        sf = proj_dir / f"{sid}.jsonl"
+                        if sf.exists():
+                            try:
+                                with open(sf, "r", encoding="utf-8", errors="replace") as sf_f:
+                                    for sline in sf_f:
+                                        try:
+                                            sevt = json.loads(sline.strip())
+                                            if sevt.get("timestamp"):
+                                                ts_str = sevt["timestamp"]
+                                                if isinstance(ts_str, str):
+                                                    ts = int(datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp() * 1000)
+                                                break
+                                        except:
+                                            continue
+                                # Get first user message as prompt
+                                with open(sf, "r", encoding="utf-8", errors="replace") as sf_f:
+                                    for sline in sf_f:
+                                        try:
+                                            sevt = json.loads(sline.strip())
+                                            if sevt.get("type") == "user":
+                                                msg = sevt.get("message", "")
+                                                if isinstance(msg, dict):
+                                                    msg = str(msg.get("content", ""))
+                                                first_prompt = (msg or "")[:100]
+                                                break
+                                        except:
+                                            continue
+                            except:
+                                pass
+                            break
+                    unique_sessions.append({
+                        "sessionId": sid,
+                        "timestamp": ts,
+                        "project": proj_name,
+                        "projectShort": proj_short,
+                        "firstPrompt": first_prompt,
+                        "source": "claude",
+                        "entrypoint": ep_val,
+                    })
+
+        # Sort all sessions by timestamp descending, then trim
+        unique_sessions.sort(key=lambda s: s.get("timestamp", 0), reverse=True)
+        unique_sessions = unique_sessions[:limit]
 
         # 收集所有项目路径用于筛选
         all_projects = list(set(e.get("project", "") for e in history if e.get("project")))
