@@ -56,7 +56,17 @@ const I18N = {
     efficiency:'Prompt 效率', efficiencyDesc:'输出比率、缓存评级与交互模式分类', effTrend:'效率趋势', effTrendDesc:'每日输出比率与缓存命中率',
     outputRatio:'输出比率', cacheGrade:'缓存评级', sessionsAnalyzed:'分析会话数', interactionModes:'交互模式',
     modeExploration:'探索', modeBuilding:'构建', modeDebugging:'调试', modeReview:'审查',
-    builtinTools:'内置工具', mcpTools:'MCP 工具'
+    builtinTools:'内置工具', mcpTools:'MCP 工具',
+    insights:'优化建议', noInsights:'暂无建议',
+    budget:'预算', budgetConfig:'预算配置', budgetConfigDesc:'设定每日/每周/每月成本上限',
+    dailyBudget:'每日 ($)', weeklyBudget:'每周 ($)', monthlyBudget:'每月 ($)',
+    budgetDaily:'每日', budgetWeekly:'每周', budgetMonthly:'每月',
+    spent:'已花费', remaining:'剩余', overBudget:'超出预算',
+    compReport:'对比报告', compReportDesc:'本期与上期对比',
+    weeklyReport:'周报', monthlyReport:'月报',
+    current:'本期', previous:'上期', change:'变化',
+    highlights:'亮点', avgDailyCost:'日均成本', topModel:'最活跃模型', mostActiveDay:'最活跃日',
+    savingPotential:'节省潜力'
   },
   en: {
     refresh:'Refresh', plan:'Plan', usage5h:'5h Usage', reset:'Resets in',
@@ -107,7 +117,17 @@ const I18N = {
     efficiency:'Prompt Efficiency', efficiencyDesc:'Output ratio, cache grade & interaction modes', effTrend:'Efficiency Trend', effTrendDesc:'Daily output ratio & cache rate',
     outputRatio:'Output Ratio', cacheGrade:'Cache Grade', sessionsAnalyzed:'Sessions Analyzed', interactionModes:'Interaction Modes',
     modeExploration:'Exploration', modeBuilding:'Building', modeDebugging:'Debugging', modeReview:'Review',
-    builtinTools:'Built-in Tools', mcpTools:'MCP Tools'
+    builtinTools:'Built-in Tools', mcpTools:'MCP Tools',
+    insights:'Optimization Insights', noInsights:'No suggestions',
+    budget:'Budget', budgetConfig:'Budget Configuration', budgetConfigDesc:'Set daily/weekly/monthly cost limits',
+    dailyBudget:'Daily ($)', weeklyBudget:'Weekly ($)', monthlyBudget:'Monthly ($)',
+    budgetDaily:'Daily', budgetWeekly:'Weekly', budgetMonthly:'Monthly',
+    spent:'Spent', remaining:'Remaining', overBudget:'Over budget',
+    compReport:'Comparison Report', compReportDesc:'This period vs last period',
+    weeklyReport:'Weekly', monthlyReport:'Monthly',
+    current:'Current', previous:'Previous', change:'Change',
+    highlights:'Highlights', avgDailyCost:'Avg Daily Cost', topModel:'Top Model', mostActiveDay:'Most Active Day',
+    savingPotential:'Saving potential'
   }
 };
 let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
@@ -426,9 +446,9 @@ function switchPage(pageId) {
   const pt = document.getElementById('pageTitle');
   if (pt && titleMap[pageId]) pt.textContent = t[titleMap[pageId]] || pageId;
   // Lazy load
-  if (pageId === 'overview') { if (!chA) renderCharts(); loadTodayBreakdown(); loadRatePrediction(); }
+  if (pageId === 'overview') { if (!chA) renderCharts(); loadTodayBreakdown(); loadRatePrediction(); loadInsights(); loadBudget(); }
   if (pageId === 'live') { loadLive(); }
-  if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); }
+  if (pageId === 'analytics') { loadModels(); loadProjects(); loadTools(); loadRhythm(); loadMcpStats(); loadMcpTrend(); loadEfficiency(); loadReport('weekly'); }
   if (pageId === 'logs') { loadLogs(); loadSess(); loadWebConversations(); }
   if (pageId === 'settings') { loadSettings(); }
 }
@@ -2127,6 +2147,122 @@ async function loadEfficiency() {
   } catch(e) { console.warn('loadEfficiency:', e); }
 }
 
+/* ===== v0.7.0: Cost Optimization Insights ===== */
+async function loadInsights() {
+  try {
+    const d = await api('/api/insights');
+    if (!d || !d.insights || !d.insights.length) {
+      const c = document.getElementById('insightsCard'); if(c) c.style.display='none'; return;
+    }
+    const c = document.getElementById('insightsCard'); if(c) c.style.display='';
+    const t = I18N[curLang] || I18N.zh;
+    const list = document.getElementById('insightsList');
+    if (!list) return;
+    list.innerHTML = d.insights.slice(0,4).map(i => {
+      const title = curLang==='zh' ? i.title_zh : i.title_en;
+      const desc = curLang==='zh' ? i.desc_zh : i.desc_en;
+      const savingsHtml = i.savings_usd > 0 ? `<div class="insight-savings">${t.savingPotential||'Saving potential'}: $${i.savings_usd}</div>` : '';
+      return `<div class="insight-item">
+        <div class="insight-icon ${i.severity}"><i class="ph ${i.icon||'ph-lightbulb'}"></i></div>
+        <div style="flex:1"><div class="insight-title">${title}</div><div class="insight-desc">${desc}</div>${savingsHtml}</div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.warn('loadInsights:', e); }
+}
+
+/* ===== v0.7.1: Budget Management ===== */
+async function loadBudget() {
+  try {
+    const d = await api('/api/budget');
+    if (!d || !d.configured) {
+      const c = document.getElementById('budgetCard'); if(c) c.style.display='none'; return;
+    }
+    const c = document.getElementById('budgetCard'); if(c) c.style.display='';
+    const t = I18N[curLang] || I18N.zh;
+    const bars = document.getElementById('budgetBars');
+    if (!bars) return;
+    const labels = {daily:t.budgetDaily||'Daily',weekly:t.budgetWeekly||'Weekly',monthly:t.budgetMonthly||'Monthly'};
+    let html = '';
+    for (const [period, label] of Object.entries(labels)) {
+      const s = d.status[period];
+      if (!s) continue;
+      const pct = Math.min(s.pct, 100);
+      const overText = s.pct > 100 ? ` (${t.overBudget||'Over budget'}!)` : '';
+      html += `<div class="budget-row">
+        <div class="budget-label"><span>${label}</span><span>$${s.spent.toFixed(2)} / $${s.limit.toFixed(2)}${overText}</span></div>
+        <div class="budget-bar"><div class="budget-fill ${s.alert}" style="width:${pct}%"></div></div>
+      </div>`;
+    }
+    bars.innerHTML = html || `<div style="font:400 11px var(--font);color:var(--text-2)">${t.noInsights||'No budget set'}</div>`;
+    // Populate settings form
+    const bd = document.getElementById('budgetDaily');
+    const bw = document.getElementById('budgetWeekly');
+    const bm = document.getElementById('budgetMonthly');
+    if (bd && d.budget.daily) bd.value = d.budget.daily;
+    if (bw && d.budget.weekly) bw.value = d.budget.weekly;
+    if (bm && d.budget.monthly) bm.value = d.budget.monthly;
+  } catch(e) { console.warn('loadBudget:', e); }
+}
+async function saveBudget() {
+  const daily = parseFloat(document.getElementById('budgetDaily')?.value) || 0;
+  const weekly = parseFloat(document.getElementById('budgetWeekly')?.value) || 0;
+  const monthly = parseFloat(document.getElementById('budgetMonthly')?.value) || 0;
+  try {
+    await fetch('/api/budget', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({daily,weekly,monthly})});
+    notyf.success(curLang==='zh'?'预算已保存':'Budget saved');
+    loadBudget();
+  } catch(e) { notyf.error(curLang==='zh'?'保存失败':'Save failed'); }
+}
+
+/* ===== v0.7.2: Comparison Report ===== */
+async function loadReport(type) {
+  type = type || 'weekly';
+  // Toggle active button
+  document.getElementById('btnReportWeekly')?.classList.toggle('active', type==='weekly');
+  document.getElementById('btnReportMonthly')?.classList.toggle('active', type==='monthly');
+  const el = document.getElementById('reportContent');
+  if (!el) return;
+  try {
+    const d = await api(`/api/report?type=${type}`);
+    if (!d) { el.innerHTML = ''; return; }
+    const t = I18N[curLang] || I18N.zh;
+    const c = d.current, p = d.previous, dl = d.deltas;
+    const periodLabel = curLang==='zh' ? d.period_label_zh : d.period_label_en;
+
+    function deltaHtml(val) {
+      if (val === 0) return `<div class="report-delta flat">—</div>`;
+      const cls = val > 0 ? 'up' : 'down';
+      const arrow = val > 0 ? '↑' : '↓';
+      return `<div class="report-delta ${cls}">${arrow} ${Math.abs(val).toFixed(1)}%</div>`;
+    }
+
+    const metrics = [
+      {key:'messages', label:t.msgs||'Messages', cur:c.messages, prev:p.messages, delta:dl.messages, fmt:v=>v.toLocaleString()},
+      {key:'sessions', label:t.sessions_l||'Sessions', cur:c.sessions, prev:p.sessions, delta:dl.sessions, fmt:v=>v.toLocaleString()},
+      {key:'tokens', label:t.tokens||'Tokens', cur:c.tokens, prev:p.tokens, delta:dl.tokens, fmt:v=>fmt(v)},
+      {key:'cost', label:t.cost||'Cost', cur:c.cost, prev:p.cost, delta:dl.cost, fmt:v=>'$'+v.toFixed(2)},
+      {key:'tools', label:t.tools||'Tools', cur:c.tools, prev:p.tools, delta:dl.tools, fmt:v=>v.toLocaleString()},
+    ];
+
+    el.innerHTML = `
+      <div style="font:600 13px var(--font);color:var(--text-0);margin-bottom:12px">${periodLabel}</div>
+      <div class="report-grid">
+        ${metrics.map(m => `<div class="report-stat">
+          <div class="report-stat-val">${m.fmt(m.cur)}</div>
+          <div class="report-stat-label">${m.label}</div>
+          ${deltaHtml(m.delta)}
+          <div style="font:400 9px var(--mono);color:var(--text-2);margin-top:2px">${t.previous||'Prev'}: ${m.fmt(m.prev)}</div>
+        </div>`).join('')}
+      </div>
+      ${d.highlights && d.highlights.length ? `
+        <div style="font:600 11px var(--font);color:var(--text-1);margin-bottom:8px">${t.highlights||'Highlights'}</div>
+        <div class="report-highlights">
+          ${d.highlights.map(h => `<div class="report-hl"><i class="ph ${h.icon}"></i><div><div style="font:400 10px var(--font);color:var(--text-2)">${curLang==='zh'?h.label_zh:h.label_en}</div><div style="font:700 13px var(--mono);color:var(--text-0)">${h.value}</div></div></div>`).join('')}
+        </div>` : ''}
+    `;
+  } catch(e) { console.warn('loadReport:', e); el.innerHTML = ''; }
+}
+
 /* ===== Init ===== */
 async function init() {
   try {
@@ -2135,7 +2271,8 @@ async function init() {
       loadStatus(), loadOverview(), loadCharts(), loadModels(),
       loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(),
       loadWebConversations(), loadTodayBreakdown(),
-      loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency()
+      loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency(),
+      loadInsights(), loadBudget()
     ]);
     notyf.success(curLang==='zh' ? 'Dashboard 加载完成' : 'Dashboard loaded');
   } catch(e) {
@@ -2157,7 +2294,7 @@ async function refreshAll() {
   document.getElementById('lastUp').textContent = curLang==='zh' ? '刷新中...' : 'Refreshing...';
   try {
     await api('/api/overview?refresh=1' + sourceParam());
-    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations(), loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency()]);
+    await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations(), loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget()]);
     notyf.success(curLang==='zh' ? '已更新' : 'Updated');
   } catch { notyf.error(curLang==='zh' ? '刷新失败' : 'Refresh failed'); }
   document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});

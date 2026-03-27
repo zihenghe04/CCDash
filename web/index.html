@@ -178,6 +178,18 @@
       </div>
     </div>
 
+    <!-- v0.7.0: Insights + v0.7.1: Budget -->
+    <div class="insights-budget-row" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="card insights-card" id="insightsCard" style="flex:1;min-width:300px;display:none;padding:16px 20px">
+        <div class="sec-title" style="margin-bottom:10px"><i class="ph ph-lightbulb"></i> <span data-i="insights">Optimization Insights</span></div>
+        <div id="insightsList"></div>
+      </div>
+      <div class="card budget-card" id="budgetCard" style="flex:1;min-width:260px;display:none;padding:16px 20px">
+        <div class="sec-title" style="margin-bottom:10px"><i class="ph ph-wallet"></i> <span data-i="budget">Budget</span></div>
+        <div id="budgetBars"></div>
+      </div>
+    </div>
+
     <!-- Stat cards -->
     <div class="stat-cards">
       <div class="stat-card card">
@@ -311,6 +323,18 @@
         <div id="chartEffTrend" style="min-height:220px"></div>
       </div>
     </div>
+    <!-- v0.7.2: Comparison Report -->
+    <div class="card sec">
+      <div class="sec-header">
+        <div><div class="sec-title"><i class="ph ph-chart-bar"></i> <span data-i="compReport">Comparison Report</span></div>
+        <div class="sec-desc" data-i="compReportDesc">This period vs last period</div></div>
+        <div style="display:flex;gap:6px">
+          <button class="pill small" id="btnReportWeekly" onclick="loadReport('weekly')" style="font-size:11px" data-i="weeklyReport">Weekly</button>
+          <button class="pill small" id="btnReportMonthly" onclick="loadReport('monthly')" style="font-size:11px" data-i="monthlyReport">Monthly</button>
+        </div>
+      </div>
+      <div id="reportContent" style="margin-top:12px"></div>
+    </div>
   </div>
 
   <!-- PAGE: Live Stream -->
@@ -405,6 +429,26 @@
       </div>
       <div id="pricingTable" style="margin-top:16px"></div>
       <button class="btn btn-accent" onclick="savePricing()" style="margin-top:12px"><i class="ph ph-floppy-disk"></i> <span data-i="savePricing">Save Pricing</span></button>
+    </div>
+
+    <div class="card sec" style="max-width:800px;margin-top:16px">
+      <div class="sec-title"><i class="ph ph-wallet"></i> <span data-i="budgetConfig">Budget Configuration</span></div>
+      <div class="sec-desc" data-i="budgetConfigDesc">Set daily/weekly/monthly cost limits</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px">
+        <div>
+          <label style="font:600 10px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px" data-i="dailyBudget">Daily ($)</label>
+          <input id="budgetDaily" type="number" step="0.5" min="0" placeholder="0" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-l);background:var(--bg-3);color:var(--text-0);font:13px var(--mono)">
+        </div>
+        <div>
+          <label style="font:600 10px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px" data-i="weeklyBudget">Weekly ($)</label>
+          <input id="budgetWeekly" type="number" step="1" min="0" placeholder="0" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-l);background:var(--bg-3);color:var(--text-0);font:13px var(--mono)">
+        </div>
+        <div>
+          <label style="font:600 10px var(--font);color:var(--text-2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px" data-i="monthlyBudget">Monthly ($)</label>
+          <input id="budgetMonthly" type="number" step="5" min="0" placeholder="0" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-l);background:var(--bg-3);color:var(--text-0);font:13px var(--mono)">
+        </div>
+      </div>
+      <button onclick="saveBudget()" style="margin-top:12px;padding:8px 24px;border-radius:8px;border:none;background:var(--accent);color:#fff;font:600 12px var(--font);cursor:pointer" data-i="save">Save</button>
     </div>
 
     <div class="card sec" style="max-width:800px;margin-top:16px">
