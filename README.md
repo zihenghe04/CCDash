@@ -188,7 +188,9 @@ cp config.example.json config.json
 {
   "remotes": [],
   "claude_session_key": "",
-  "claude_org_id": ""
+  "claude_org_id": "",
+  "budget": { "daily": 20, "weekly": 100, "monthly": 400 },
+  "webhooks": []
 }
 ```
 
@@ -197,6 +199,8 @@ cp config.example.json config.json
 | `remotes` | ❌ | Remote agent endpoints for multi-server monitoring |
 | `claude_session_key` | ❌ | Enables 5h/7d subscription quota tracking |
 | `claude_org_id` | ❌ | Your claude.ai organization ID |
+| `budget` | ❌ | Daily/weekly/monthly cost limits in USD |
+| `webhooks` | ❌ | Webhook endpoints for alerts (Slack/Discord/HTTP) |
 
 ### 🔑 Getting Session Key (Optional)
 
@@ -239,6 +243,73 @@ Add to `config.json`:
 ```
 
 Projects from remote servers are tagged with `CLOUD` badges in the dashboard.
+
+---
+
+## ⌨️ CLI Tool
+
+Check usage without leaving the terminal:
+
+```bash
+python3 ccdash-cli.py status        # Today's overview + quota gauge
+python3 ccdash-cli.py top           # Project TOP 5
+python3 ccdash-cli.py models        # Model cost breakdown
+python3 ccdash-cli.py budget        # Budget progress bars
+python3 ccdash-cli.py live          # Recent API calls
+```
+
+Connect to a remote CCDash instance:
+
+```bash
+python3 ccdash-cli.py --server http://myserver:8420 status
+```
+
+> Requires a running `server.py`. Zero dependencies — just Python stdlib.
+
+---
+
+## 🔔 Webhook Notifications
+
+Get alerts when quota is running low or budget is exceeded.
+
+### Setup in Dashboard
+
+1. Go to **Settings** → **Webhook Notifications**
+2. Paste your webhook URL (Slack / Discord / any HTTP endpoint)
+3. Select format and click **Save**
+4. Click **Test** to verify
+
+### Supported Formats
+
+| Platform | URL Pattern | Auto-detected |
+|:---------|:-----------|:-------------:|
+| Slack | `https://hooks.slack.com/services/...` | ✅ |
+| Discord | `https://discord.com/api/webhooks/...` | ✅ |
+| Generic | Any HTTPS endpoint | — |
+
+### Or configure in `config.json`
+
+```json
+{
+  "webhooks": [
+    {
+      "url": "https://hooks.slack.com/services/T.../B.../xxx",
+      "format": "slack",
+      "enabled": true,
+      "events": ["all"]
+    }
+  ]
+}
+```
+
+### Trigger Events
+
+| Event | Condition |
+|:------|:---------|
+| `quota_warning` | 5h quota usage > 80% |
+| `budget_exceeded` | Daily cost exceeds budget limit |
+
+> Background check runs every 5 minutes when webhooks are configured.
 
 ---
 
@@ -428,6 +499,51 @@ ssh -L 8421:127.0.0.1:8421 user@server -N -f
 ```
 
 远程项目在面板中会显示 `CLOUD` 标签。
+
+---
+
+## ⌨️ CLI 命令行工具
+
+不离开终端即可查看用量：
+
+```bash
+python3 ccdash-cli.py status        # 今日概览 + 额度仪表
+python3 ccdash-cli.py top           # 项目 TOP 5
+python3 ccdash-cli.py models        # 模型成本明细
+python3 ccdash-cli.py budget        # 预算进度条
+python3 ccdash-cli.py live          # 最近 API 调用
+```
+
+连接远程 CCDash：
+
+```bash
+python3 ccdash-cli.py --server http://myserver:8420 status
+```
+
+> 需要 `server.py` 运行中。零依赖，只需 Python。
+
+---
+
+## 🔔 Webhook 通知
+
+额度不足或预算超标时自动告警。
+
+在面板 **设置** → **Webhook 通知** 中配置，或在 `config.json` 中添加：
+
+```json
+{
+  "webhooks": [
+    {
+      "url": "https://hooks.slack.com/services/T.../B.../xxx",
+      "format": "slack",
+      "enabled": true,
+      "events": ["all"]
+    }
+  ]
+}
+```
+
+支持 Slack、Discord 和通用 HTTP Webhook。后台每 5 分钟检查一次触发条件（额度 >80%、每日预算超标）。
 
 ---
 
