@@ -5,6 +5,64 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.7.0] — 2026-03-27
+
+### 🚀 New Features
+
+#### Cost Optimization Engine (v0.7.0)
+- **Smart insights** — rule-driven optimization suggestions on Overview page
+- **Model downgrade detection** — identifies Opus usage for simple tasks, estimates savings from Sonnet
+- **Cache optimization** — detects low cache hit rate with savings estimate
+- **Cost anomaly detection** — flags days with 2.5x above average cost
+- **Peak hour warning** — identifies usage concentration risk
+- **`/api/insights`** — returns prioritized optimization suggestions with savings estimates
+
+#### Token Budget Management (v0.7.1)
+- **Budget configuration** — set daily/weekly/monthly cost limits in Settings
+- **Budget progress bars** — real-time spend vs limit on Overview page
+- **Alert thresholds** — OK / Warning (60%) / Danger (80%) / Over (100%) with color coding
+- **`GET/POST /api/budget`** — budget CRUD with status tracking
+
+#### Comparison Reports (v0.7.2)
+- **Weekly report** — this week vs last week across all metrics
+- **Monthly report** — this month vs last month
+- **Delta percentages** — ↑↓ arrows with color-coded change indicators
+- **Highlights** — top model, cache rate, avg daily cost, most active day
+- **`/api/report?type=weekly|monthly`** — comparison report data
+
+### 🎨 UI
+- Insights card with severity icons (high/medium/low) and savings badges
+- Budget progress bars with gradient fills and pulse animation on over-budget
+- Report section on Analytics page with weekly/monthly toggle
+- Report grid with delta arrows and highlight cards
+
+### 🌐 i18n
+- Full Chinese translations for all v0.7.x features
+- Severity labels: 高/中/低, Budget labels: 每日/每周/每月
+- Report labels: 本期/上期/变化, Highlights: 最活跃模型/日均成本
+
+### 🚀 新功能
+
+#### 智能成本优化 (v0.7.0)
+- **优化建议** — 概览页显示基于规则的成本优化建议
+- **模型降级建议** — 检测简单任务中的 Opus 使用，建议切换到 Sonnet
+- **缓存优化** — 检测低缓存命中率，给出节省估算
+- **成本异常检测** — 标记消费异常的日期
+- **高峰时段提醒** — 提示使用集中风险
+
+#### Token 预算管理 (v0.7.1)
+- **预算配置** — 在设置页设定每日/每周/每月成本上限
+- **预算进度条** — 概览页实时显示花费 vs 预算
+- **预警阈值** — OK / 警告(60%) / 危险(80%) / 超标(100%)
+
+#### 对比报告 (v0.7.2)
+- **周报** — 本周 vs 上周全维度对比
+- **月报** — 本月 vs 上月对比
+- **变化百分比** — ↑↓ 箭头彩色标注
+- **亮点** — 最活跃模型、缓存命中率、日均成本、最活跃日
+
+---
+
 ## [0.6.0] — 2026-03-27
 
 ### 🚀 New Features

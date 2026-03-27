@@ -1835,6 +1835,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/mcp-trend": self.api_mcp_trend,
             "/api/rate-prediction": self.api_rate_prediction,
             "/api/efficiency": self.api_efficiency,
+            "/api/insights": self.api_insights,
+            "/api/budget": self.api_budget_get,
+            "/api/report": self.api_report,
             "/api/settings": self.api_settings_get,
         }
 
@@ -1871,6 +1874,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 body = self.rfile.read(content_length)
                 data = json.loads(body.decode("utf-8")) if body else {}
                 self.api_settings_post(data)
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
+        elif path == "/api/budget":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length)
+                data = json.loads(body.decode("utf-8")) if body else {}
+                self.api_budget_post(data)
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
         else:
@@ -3644,6 +3655,337 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "top_efficient": top_efficient,
             "least_efficient": least_efficient,
             "trend": eff_trend,
+        })
+
+    # ============================================================
+    # v0.7.0 — Cost Optimization Insights
+    # ============================================================
+    def api_insights(self, params):
+        """Smart cost optimization suggestions (pure rule-driven)"""
+        scan = copy.deepcopy(_scan_all_projects())
+        session_eff = scan.get("session_efficiency", {})
+        models = scan.get("models", {})
+        daily = scan.get("daily", {})
+        insights = []
+
+        # Rule 1: Model downgrade — Opus used for simple tasks
+        opus_models = [m for m in models if "opus" in m.lower()]
+        sonnet_models = [m for m in models if "sonnet" in m.lower()]
+        if opus_models and sonnet_models:
+            # Find sessions where Opus was used but output was small (< 500 tokens avg)
+            opus_simple_sessions = 0
+            opus_total_sessions = 0
+            potential_savings = 0.0
+            for sid, se in session_eff.items():
+                if se.get("calls", 0) == 0:
+                    continue
+                # Rough check: if avg output per call < 500, it's a "simple" task
+                avg_out = se["output"] / se["calls"]
+                total_tok = se["input"] + se["output"] + se["cache_read"] + se["cache_create"]
+                if avg_out < 500 and se["calls"] <= 5:
+                    opus_total_sessions += 1
+                    # Check if this session used primarily opus (by token volume proxy)
+                    opus_simple_sessions += 1
+                    # Savings: Opus vs Sonnet price difference on this session's tokens
+                    opus_cost = _calc_cost(opus_models[0], se["input"], se["output"], se["cache_read"], se["cache_create"])
+                    sonnet_cost = _calc_cost(sonnet_models[0], se["input"], se["output"], se["cache_read"], se["cache_create"])
+                    if opus_cost > sonnet_cost:
+                        potential_savings += opus_cost - sonnet_cost
+
+            if opus_simple_sessions > 5 and potential_savings > 0.5:
+                insights.append({
+                    "type": "model_downgrade",
+                    "severity": "high" if potential_savings > 5 else "medium",
+                    "title_en": "Use Sonnet for simple tasks",
+                    "title_zh": "简单任务使用 Sonnet",
+                    "desc_en": f"{opus_simple_sessions} sessions used Opus for short responses (<500 tokens). Switching to Sonnet could save ~${potential_savings:.2f}.",
+                    "desc_zh": f"{opus_simple_sessions} 个会话使用 Opus 完成简短响应（<500 token），切换到 Sonnet 可节省约 ${potential_savings:.2f}。",
+                    "savings_usd": round(potential_savings, 2),
+                    "icon": "ph-swap",
+                })
+
+        # Rule 2: Cache optimization — low cache hit rate
+        total_input = scan.get("total_input", 0)
+        total_cr = scan.get("total_cache_read", 0)
+        total_cc = scan.get("total_cache_create", 0)
+        all_input = total_input + total_cr + total_cc
+        cache_rate = total_cr / all_input * 100 if all_input > 0 else 0
+        if cache_rate < 40 and all_input > 100000:
+            wasted = (total_input + total_cc) * 0.3 / 1_000_000  # rough savings if cache_read replaced direct input
+            insights.append({
+                "type": "cache_optimization",
+                "severity": "high" if cache_rate < 20 else "medium",
+                "title_en": "Improve cache hit rate",
+                "title_zh": "提升缓存命中率",
+                "desc_en": f"Cache hit rate is only {cache_rate:.0f}%. Longer sessions and consistent project contexts improve caching. Potential savings: ~${wasted:.2f}.",
+                "desc_zh": f"缓存命中率仅 {cache_rate:.0f}%。保持较长会话和一致的项目上下文可提高缓存利用率，预计可节省约 ${wasted:.2f}。",
+                "savings_usd": round(wasted, 2),
+                "icon": "ph-database",
+            })
+
+        # Rule 3: Cost anomaly — day with unusually high cost
+        if len(daily) >= 7:
+            daily_costs = []
+            for dt, dd in sorted(daily.items())[-30:]:
+                day_cost = 0.0
+                for model_name, toks in dd.get("tokens", {}).items():
+                    day_cost += _calc_cost(model_name, toks.get("input", 0), toks.get("output", 0),
+                                           toks.get("cache_read", 0), toks.get("cache_create", 0))
+                daily_costs.append((dt, day_cost))
+            if len(daily_costs) >= 7:
+                costs_only = [c for _, c in daily_costs]
+                avg_cost = sum(costs_only) / len(costs_only)
+                max_day, max_cost = max(daily_costs, key=lambda x: x[1])
+                if avg_cost > 0 and max_cost > avg_cost * 2.5:
+                    insights.append({
+                        "type": "cost_anomaly",
+                        "severity": "medium",
+                        "title_en": f"Cost spike on {max_day}",
+                        "title_zh": f"{max_day} 成本异常",
+                        "desc_en": f"${max_cost:.2f} — {max_cost/avg_cost:.1f}x the daily average (${avg_cost:.2f}). Consider reviewing that day's sessions.",
+                        "desc_zh": f"${max_cost:.2f} — 是日均（${avg_cost:.2f}）的 {max_cost/avg_cost:.1f} 倍。建议检查当日会话。",
+                        "savings_usd": 0,
+                        "icon": "ph-warning-circle",
+                    })
+
+        # Rule 4: Peak hour warning
+        history = _load_history()
+        hourly = [0] * 24
+        for entry in history:
+            ts = entry.get("timestamp", 0)
+            h, _ = ms_to_hour_dow(ts)
+            if h is not None:
+                hourly[h] += 1
+        peak = hourly.index(max(hourly)) if any(hourly) else -1
+        total_h = sum(hourly) or 1
+        if peak >= 0 and hourly[peak] / total_h > 0.15:
+            insights.append({
+                "type": "peak_hour",
+                "severity": "low",
+                "title_en": f"Peak usage at {peak}:00",
+                "title_zh": f"高峰时段: {peak}:00",
+                "desc_en": f"{hourly[peak]/total_h*100:.0f}% of activity concentrated at {peak}:00. Spreading usage may reduce rate limit risk.",
+                "desc_zh": f"{hourly[peak]/total_h*100:.0f}% 的活动集中在 {peak}:00。分散使用可降低限速风险。",
+                "savings_usd": 0,
+                "icon": "ph-clock",
+            })
+
+        # Sort by severity
+        sev_order = {"high": 0, "medium": 1, "low": 2}
+        insights.sort(key=lambda x: sev_order.get(x["severity"], 9))
+
+        self.send_json({"insights": insights, "total": len(insights)})
+
+    # ============================================================
+    # v0.7.1 — Token Budget Management
+    # ============================================================
+    def api_budget_get(self, params):
+        """GET /api/budget — current budget config + status"""
+        config = _load_config()
+        budget = config.get("budget", {})
+        if not budget:
+            self.send_json({"configured": False, "budget": {}, "status": {}})
+            return
+
+        # Compute current spend
+        scan = copy.deepcopy(_scan_all_projects())
+        daily = scan.get("daily", {})
+        models_data = scan.get("models", {})
+        today_str = datetime.date.today().isoformat()
+        now = datetime.date.today()
+
+        # Daily cost
+        today_cost = 0.0
+        td = daily.get(today_str, {}).get("tokens", {})
+        for m, t in td.items():
+            today_cost += _calc_cost(m, t.get("input", 0), t.get("output", 0), t.get("cache_read", 0), t.get("cache_create", 0))
+
+        # Weekly cost (Mon-Sun)
+        dow = now.weekday()
+        week_cost = 0.0
+        for i in range(dow + 1):
+            d = (now - datetime.timedelta(days=i)).isoformat()
+            dd = daily.get(d, {}).get("tokens", {})
+            for m, t in dd.items():
+                week_cost += _calc_cost(m, t.get("input", 0), t.get("output", 0), t.get("cache_read", 0), t.get("cache_create", 0))
+
+        # Monthly cost
+        month_cost = 0.0
+        for d_str, dd in daily.items():
+            if d_str.startswith(now.strftime("%Y-%m")):
+                for m, t in dd.get("tokens", {}).items():
+                    month_cost += _calc_cost(m, t.get("input", 0), t.get("output", 0), t.get("cache_read", 0), t.get("cache_create", 0))
+
+        # Build status
+        status = {}
+        for period in ["daily", "weekly", "monthly"]:
+            limit = budget.get(period, 0)
+            if not limit:
+                continue
+            spent = {"daily": today_cost, "weekly": week_cost, "monthly": month_cost}[period]
+            pct = round(spent / limit * 100, 1) if limit > 0 else 0
+            alert = "over" if pct >= 100 else "danger" if pct >= 80 else "warning" if pct >= 60 else "ok"
+            status[period] = {
+                "limit": limit,
+                "spent": round(spent, 4),
+                "pct": min(pct, 999),
+                "alert": alert,
+            }
+
+        self.send_json({
+            "configured": True,
+            "budget": budget,
+            "status": status,
+        })
+
+    def api_budget_post(self, data):
+        """POST /api/budget — save budget config"""
+        config = _load_config()
+        budget = {}
+        for period in ["daily", "weekly", "monthly"]:
+            val = data.get(period)
+            if val is not None:
+                budget[period] = float(val) if val else 0
+        config["budget"] = budget
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            self.send_json({"ok": True})
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
+
+    # ============================================================
+    # v0.7.2 — Comparison Reports
+    # ============================================================
+    def api_report(self, params):
+        """Weekly/monthly comparison report"""
+        report_type = params.get("type", ["weekly"])[0]
+        scan = copy.deepcopy(_scan_all_projects())
+        codex_scan = _scan_codex() if _codex_enabled() else None
+        if codex_scan:
+            scan = _merge_codex_into_scan(scan, codex_scan)
+        daily = scan.get("daily", {})
+        models = scan.get("models", {})
+        today = datetime.date.today()
+
+        def _period_stats(start_date, end_date):
+            """Aggregate stats for a date range"""
+            stats = {"messages": 0, "sessions": 0, "tools": 0, "tokens": 0, "cost": 0.0, "days": 0,
+                     "models": {}, "top_project": "", "top_project_tokens": 0}
+            d = start_date
+            while d <= end_date:
+                ds = d.isoformat()
+                dd = daily.get(ds, {})
+                if dd:
+                    stats["messages"] += dd.get("messages", 0)
+                    stats["sessions"] += dd.get("sessions", 0)
+                    stats["tools"] += dd.get("tools", 0)
+                    stats["days"] += 1
+                    for m, t in dd.get("tokens", {}).items():
+                        tok = t.get("input", 0) + t.get("output", 0) + t.get("cache_read", 0) + t.get("cache_create", 0)
+                        stats["tokens"] += tok
+                        stats["models"][m] = stats["models"].get(m, 0) + tok
+                        stats["cost"] += _calc_cost(m, t.get("input", 0), t.get("output", 0),
+                                                    t.get("cache_read", 0), t.get("cache_create", 0))
+                d += datetime.timedelta(days=1)
+            stats["cost"] = round(stats["cost"], 4)
+            return stats
+
+        def _delta(cur, prev):
+            """Compute delta percentage"""
+            if prev == 0:
+                return 100.0 if cur > 0 else 0.0
+            return round((cur - prev) / prev * 100, 1)
+
+        if report_type == "weekly":
+            dow = today.weekday()
+            this_start = today - datetime.timedelta(days=dow)
+            this_end = today
+            last_start = this_start - datetime.timedelta(days=7)
+            last_end = this_start - datetime.timedelta(days=1)
+            period_label_en = f"Week of {this_start.isoformat()}"
+            period_label_zh = f"{this_start.isoformat()} 起的一周"
+        else:  # monthly
+            this_start = today.replace(day=1)
+            this_end = today
+            last_month = (this_start - datetime.timedelta(days=1))
+            last_start = last_month.replace(day=1)
+            last_end = last_month
+            period_label_en = today.strftime("%B %Y")
+            period_label_zh = today.strftime("%Y年%m月")
+
+        current = _period_stats(this_start, this_end)
+        previous = _period_stats(last_start, last_end)
+
+        # Deltas
+        deltas = {
+            "messages": _delta(current["messages"], previous["messages"]),
+            "sessions": _delta(current["sessions"], previous["sessions"]),
+            "tokens": _delta(current["tokens"], previous["tokens"]),
+            "cost": _delta(current["cost"], previous["cost"]),
+            "tools": _delta(current["tools"], previous["tools"]),
+        }
+
+        # Highlights
+        highlights = []
+        # Most active model
+        if current["models"]:
+            top_model = max(current["models"], key=current["models"].get)
+            highlights.append({
+                "label_en": "Top Model", "label_zh": "最活跃模型",
+                "value": top_model.replace("claude-", "").replace("-20250", ""),
+                "icon": "ph-cpu",
+            })
+
+        # Best cache rate in period
+        total_cr = scan.get("total_cache_read", 0)
+        all_in = scan.get("total_input", 0) + total_cr + scan.get("total_cache_create", 0)
+        if all_in > 0:
+            highlights.append({
+                "label_en": "Cache Rate", "label_zh": "缓存命中率",
+                "value": f"{total_cr / all_in * 100:.0f}%",
+                "icon": "ph-database",
+            })
+
+        # Avg cost per day
+        if current["days"] > 0:
+            avg_daily = current["cost"] / current["days"]
+            highlights.append({
+                "label_en": "Avg Daily Cost", "label_zh": "日均成本",
+                "value": f"${avg_daily:.2f}",
+                "icon": "ph-coins",
+            })
+
+        # Most productive day
+        best_day = ""
+        best_day_msgs = 0
+        d = this_start
+        while d <= this_end:
+            ds = d.isoformat()
+            dd = daily.get(ds, {})
+            if dd.get("messages", 0) > best_day_msgs:
+                best_day_msgs = dd["messages"]
+                best_day = ds
+            d += datetime.timedelta(days=1)
+        if best_day:
+            highlights.append({
+                "label_en": "Most Active Day", "label_zh": "最活跃日",
+                "value": f"{best_day} ({best_day_msgs} msgs)",
+                "icon": "ph-fire",
+            })
+
+        self.send_json({
+            "type": report_type,
+            "period_label_en": period_label_en,
+            "period_label_zh": period_label_zh,
+            "current": current,
+            "previous": previous,
+            "deltas": deltas,
+            "highlights": highlights,
+            "range": {
+                "current": {"start": this_start.isoformat(), "end": this_end.isoformat()},
+                "previous": {"start": last_start.isoformat(), "end": last_end.isoformat()},
+            }
         })
 
 
