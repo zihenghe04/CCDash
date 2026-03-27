@@ -2352,9 +2352,10 @@ async function loadAccounts() {
     const t = I18N[curLang] || I18N.zh;
     el.innerHTML = d.accounts.map(acc => {
       const q = acc.quota || {};
-      const util = q.utilization || q.five_hour?.percent_used || 0;
+      const util = q.five_hour?.utilization ?? q.utilization ?? 0;
       const pct = Math.round(util);
       const color = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--orange)' : 'var(--green)';
+      const pct7d = Math.round(q.seven_day?.utilization ?? 0);
       const err = q.error ? `<span style="font:400 10px var(--font);color:var(--red)">⚠ ${q.error}</span>` : '';
       return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin:6px 0;border-radius:8px;background:var(--bg-3);border:1px solid var(--border-l)">
         <i class="ph ph-user-circle" style="font-size:20px;color:var(--accent)"></i>
@@ -2362,9 +2363,16 @@ async function loadAccounts() {
           <div style="font:600 13px var(--font);color:var(--text-0)">${acc.name}</div>
           <div style="font:400 10px var(--mono);color:var(--text-2)">${acc.org_id_masked||'—'}</div>
         </div>
-        <div style="text-align:right">
-          <div style="font:700 16px var(--mono);color:${color}">${pct}%</div>
-          <div style="font:400 9px var(--font);color:var(--text-2)">5h quota ${err}</div>
+        <div style="display:flex;gap:16px;align-items:center">
+          <div style="text-align:center">
+            <div style="font:700 16px var(--mono);color:${color}">${pct}%</div>
+            <div style="font:400 9px var(--font);color:var(--text-2)">5h</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font:700 16px var(--mono);color:var(--blue)">${pct7d}%</div>
+            <div style="font:400 9px var(--font);color:var(--text-2)">7d</div>
+          </div>
+          ${err}
         </div>
       </div>`;
     }).join('');
@@ -2410,17 +2418,31 @@ function _replayStep() {
 
 function toggleReplay() {
   if (_replayState.playing) {
+    // Pause
     _replayState.playing = false;
     clearTimeout(_replayState.timer);
     const playBtn = document.getElementById('replayPlayBtn');
     if (playBtn) playBtn.innerHTML = '<i class="ph ph-play"></i>';
   } else {
-    if (_replayState.index >= (_replayState.events?.length || 0)) _replayState.index = 0;
+    // First click or resume — initialize events if needed
+    if (!_replayState.events || !_replayState.events.length) {
+      // Scope to modal's main panel to avoid picking up chain panel events
+      const panel = document.querySelector('.modal-main-panel') || document;
+      const events = panel.querySelectorAll('.timeline-event');
+      if (!events.length) { notyf.error(curLang==='zh'?'没有可回放的事件':'No events to replay'); return; }
+      _replayState.events = Array.from(events);
+      _replayState.index = 0;
+      // Hide all events
+      _replayState.events.forEach(e => { e.style.opacity = '0'; e.style.transform = 'translateY(10px)'; e.style.transition = 'opacity .3s, transform .3s'; });
+    }
+    if (_replayState.index >= _replayState.events.length) {
+      // Restart from beginning
+      _replayState.index = 0;
+      _replayState.events.forEach(e => { e.style.opacity = '0'; e.style.transform = 'translateY(10px)'; });
+    }
     _replayState.playing = true;
     const playBtn = document.getElementById('replayPlayBtn');
     if (playBtn) playBtn.innerHTML = '<i class="ph ph-pause"></i>';
-    // Show all events up to current index
-    _replayState.events?.forEach((e, i) => { if (i < _replayState.index) { e.style.opacity = '1'; e.style.transform = 'translateY(0)'; }});
     _replayStep();
   }
 }
@@ -2433,8 +2455,12 @@ function setReplaySpeed(spd) {
 function resetReplay() {
   _replayState.playing = false;
   clearTimeout(_replayState.timer);
+  // Restore all events to visible
+  if (_replayState.events && _replayState.events.length) {
+    _replayState.events.forEach(e => { e.style.opacity = '1'; e.style.transform = 'translateY(0)'; e.style.transition = 'none'; });
+  }
+  _replayState.events = [];
   _replayState.index = 0;
-  _replayState.events?.forEach(e => { e.style.opacity = '1'; e.style.transform = 'translateY(0)'; });
   const playBtn = document.getElementById('replayPlayBtn');
   if (playBtn) playBtn.innerHTML = '<i class="ph ph-play"></i>';
 }
