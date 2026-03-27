@@ -669,6 +669,3 @@ tr:nth-child(even) td { background:var(--stripe); }
 .report-hl { display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:10px; background:var(--bg-3); border:1px solid var(--border-l); }
 .report-hl i { font-size:16px; color:var(--accent); }
 
-/* ---- v0.9.1: Replay ---- */
-.replay-speed-btn { font:600 10px var(--mono) !important; padding:2px 6px !important; min-width:auto !important; }
-.replay-speed-btn.active { background:var(--accent) !important; color:#fff !important; }

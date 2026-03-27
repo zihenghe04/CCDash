@@ -382,9 +382,11 @@ DEFAULT_CONTEXT_WINDOW = 200000
 def _calc_cost(model, inp, out, cache_read, cache_create):
     """Calculate equivalent API cost in USD using: custom → LiteLLM → hardcoded → default"""
     p = _get_model_pricing(model)
+    # cache_create pricing: use cache_create if present and non-None, else cache_write, else default
+    cc_price = p.get("cache_create") if p.get("cache_create") is not None else p.get("cache_write", 3.75)
     return (inp * p.get("input", 3.0) + out * p.get("output", 15.0) +
             cache_read * p.get("cache_read", 0.3) +
-            cache_create * (p.get("cache_create", 0) or p.get("cache_write", 3.75))) / 1_000_000
+            cache_create * cc_price) / 1_000_000
 
 
 def _model_provider(model_name):
@@ -2019,7 +2021,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             recent_5m = [c for c in logs if c.get("timestamp") and
                          (now - parse_iso_ts(c["timestamp"])).total_seconds() < 300]
             rpm = round(len(recent_5m) / 5, 1) if recent_5m else 0
-            tpm_val = sum(c.get("input_tokens", 0) + c.get("output_tokens", 0) for c in recent_5m)
+            tpm_val = sum(c.get("input_tokens", 0) + c.get("output_tokens", 0) +
+                         c.get("cache_read", 0) + c.get("cache_create", 0) for c in recent_5m)
             tpm = round(tpm_val / 5) if recent_5m else 0
             durations = [c["duration_ms"] for c in logs[:100] if c.get("duration_ms")]
             avg_duration = round(sum(durations) / len(durations)) if durations else 0
@@ -3590,31 +3593,28 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         burn_tpm = burn_30m.get("tpm", 0)
 
         # Estimate minutes until 5h quota depletes
-        # 5h window = 300 minutes. If we've used cur_util% in (300 - remaining) minutes,
-        # At current burn rate, how many minutes until we exhaust remaining quota?
-        # Key insight: if we consumed (100 - remaining_pct)% in elapsed time,
-        # and burn_rate is tokens/min over the last 30m, then:
-        # remaining_minutes ≈ (remaining_pct / utilization_rate_per_min)
+        # Predict minutes until quota exhausted using 30m burn rate
+        # Logic: if 30m consumed X calls, and cur_util used Y%, then
+        # util_per_minute ≈ (calls_30m_contribution) / 30, extrapolate remaining
         minutes_to_throttle = None
         if remaining_pct <= 0:
             minutes_to_throttle = 0
-        elif burn_rpm > 0:
-            # Estimate: at current call rate, how fast is utilization climbing?
-            # We used cur_util% so far. If 30m burn accounts for X% of the 5h window,
-            # then remaining_pct / X * 30 = minutes left.
-            # Simplified: remaining proportion of 5h at current rate
-            calls_30m = burn_30m.get("calls", 0)
-            if calls_30m > 0 and cur_util > 0:
-                # utilization_per_min ≈ cur_util / elapsed_minutes (rough)
-                # Better: use 30m rate as representative
-                util_per_30m = cur_util * 0.1 if cur_util < 50 else cur_util * 0.05  # rough scaling
-                if util_per_30m > 0:
-                    minutes_to_throttle = round(remaining_pct / util_per_30m * 30)
-                    minutes_to_throttle = min(minutes_to_throttle, 300)
-                else:
-                    minutes_to_throttle = round(remaining_pct / 100 * 300)
+        elif burn_rpm > 0 and cur_util > 5:
+            # Simple proportional: we used cur_util% over some elapsed time.
+            # In last 30m we made N calls at current intensity.
+            # If this 30m rate continues, remaining_pct will last:
+            # (remaining_pct / cur_util) * elapsed_so_far
+            # We don't know elapsed, but 5h window = 300 min,
+            # and used_pct = cur_util, so elapsed ≈ cur_util/100 * 300 min
+            elapsed_est = cur_util / 100 * 300  # estimated minutes elapsed in window
+            if elapsed_est > 0:
+                util_per_min = cur_util / elapsed_est  # %/min
+                minutes_to_throttle = round(remaining_pct / util_per_min)
+                minutes_to_throttle = max(0, min(minutes_to_throttle, 300))
             else:
-                minutes_to_throttle = round(remaining_pct / 100 * 300)
+                minutes_to_throttle = 300
+        elif cur_util <= 5:
+            minutes_to_throttle = 300  # barely started, full window remaining
 
         # 4. Risk level
         if cur_util >= 95 or remaining_pct <= 0:
