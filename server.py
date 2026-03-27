@@ -3596,25 +3596,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         # Predict minutes until quota exhausted using 30m burn rate
         # Logic: if 30m consumed X calls, and cur_util used Y%, then
         # util_per_minute ≈ (calls_30m_contribution) / 30, extrapolate remaining
-        minutes_to_throttle = None
+        # Estimate remaining time: remaining_pct% at current pace
+        # 5h window = 300 min. Used cur_util% so far.
+        # elapsed ≈ cur_util/100 * 300, remaining ≈ remaining_pct/100 * 300
         if remaining_pct <= 0:
             minutes_to_throttle = 0
-        elif burn_rpm > 0 and cur_util > 5:
-            # Simple proportional: we used cur_util% over some elapsed time.
-            # In last 30m we made N calls at current intensity.
-            # If this 30m rate continues, remaining_pct will last:
-            # (remaining_pct / cur_util) * elapsed_so_far
-            # We don't know elapsed, but 5h window = 300 min,
-            # and used_pct = cur_util, so elapsed ≈ cur_util/100 * 300 min
-            elapsed_est = cur_util / 100 * 300  # estimated minutes elapsed in window
-            if elapsed_est > 0:
-                util_per_min = cur_util / elapsed_est  # %/min
-                minutes_to_throttle = round(remaining_pct / util_per_min)
-                minutes_to_throttle = max(0, min(minutes_to_throttle, 300))
-            else:
-                minutes_to_throttle = 300
-        elif cur_util <= 5:
-            minutes_to_throttle = 300  # barely started, full window remaining
+        else:
+            minutes_to_throttle = round(remaining_pct / 100 * 300)
+            minutes_to_throttle = max(0, min(minutes_to_throttle, 300))
 
         # 4. Risk level
         if cur_util >= 95 or remaining_pct <= 0:
@@ -4259,6 +4248,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             })
 
         all_commits.sort(key=lambda c: c["timestamp"], reverse=True)
+        # Deduplicate by hash (worktrees may report same commit from multiple dirs)
+        seen_hashes = set()
+        deduped = []
+        for c in all_commits:
+            if c["hash"] not in seen_hashes:
+                seen_hashes.add(c["hash"])
+                deduped.append(c)
+        all_commits = deduped
 
         # Summary
         total_commits = len(all_commits)

@@ -392,21 +392,23 @@
     </div></div>
     <!-- Session browser -->
     <div class="card sec">
-      <div class="sec-title" style="justify-content:space-between"><span><i class="ph ph-clock-counter-clockwise"></i> <span data-i="recentSessions">Recent Sessions</span></span><div style="display:flex;gap:6px;align-items:center"><button class="btn" id="compareBtn" style="display:none" onclick="compareSelectedSessions()"><i class="ph ph-chart-bar"></i> <span data-i="compare">Compare</span></button><select id="sFilt" onchange="loadSess()" class="filter-select" style="min-width:120px"><option value="" data-i="allProjects">All</option></select></div></div>
+      <div class="sec-title" style="justify-content:space-between;cursor:pointer" onclick="toggleSection('sessBody',this)"><span><i class="ph ph-clock-counter-clockwise"></i> <span data-i="recentSessions">Recent Sessions</span></span><div style="display:flex;gap:6px;align-items:center"><button class="btn" id="compareBtn" style="display:none" onclick="event.stopPropagation();compareSelectedSessions()"><i class="ph ph-chart-bar"></i> <span data-i="compare">Compare</span></button><select id="sFilt" onchange="loadSess()" onclick="event.stopPropagation()" class="filter-select" style="min-width:120px"><option value="" data-i="allProjects">All</option></select><i class="ph ph-caret-down" style="transition:transform .2s"></i></div></div>
       <div class="sec-desc" data-i="recentSessionsDesc">Recently active sessions</div>
-      <div class="search-box"><input class="search-input" id="sSearch" oninput="debounceSearch()" placeholder="Search sessions..."><button class="btn" onclick="loadSess()"><i class="ph ph-magnifying-glass"></i> <span data-i="search">Search</span></button></div>
-      <div class="tw" style="max-height:400px;overflow-y:auto"><table><thead><tr><th style="width:24px"><input type="checkbox" onclick="toggleAllSessChecks(this.checked)"></th><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="content">Content</th></tr></thead><tbody id="tbSess"></tbody></table></div>
+      <div id="sessBody">
+        <div class="search-box"><input class="search-input" id="sSearch" oninput="debounceSearch()" placeholder="Search sessions..."><button class="btn" onclick="loadSess()"><i class="ph ph-magnifying-glass"></i> <span data-i="search">Search</span></button></div>
+        <div class="tw" style="max-height:400px;overflow-y:auto"><table><thead><tr><th style="width:24px"><input type="checkbox" onclick="toggleAllSessChecks(this.checked)"></th><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="content">Content</th></tr></thead><tbody id="tbSess"></tbody></table></div>
+      </div>
     </div>
     <!-- Web Conversations -->
     <div class="card sec" id="webConvSection" style="display:none">
-      <div class="sec-header">
+      <div class="sec-header" style="cursor:pointer" onclick="toggleSection('webConvBody',this)">
         <div>
           <div class="sec-title"><i class="ph ph-globe"></i> <span data-i="webConversations">Web & Desktop</span></div>
           <div class="sec-desc" data-i="webConversationsDesc">Conversations from claude.ai web, desktop app & SDK</div>
         </div>
-        <button class="btn" onclick="loadWebConversations()"><i class="ph ph-arrows-clockwise"></i></button>
+        <div style="display:flex;gap:6px;align-items:center"><button class="btn" onclick="event.stopPropagation();loadWebConversations()"><i class="ph ph-arrows-clockwise"></i></button><i class="ph ph-caret-down" style="transition:transform .2s"></i></div>
       </div>
-      <div id="webConvList"></div>
+      <div id="webConvBody"><div id="webConvList"></div></div>
     </div>
   </div>
 

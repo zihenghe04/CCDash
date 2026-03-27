@@ -1902,13 +1902,16 @@ function renderWebAndDesktop(webConvs, desktopSessions) {
       const date = s.timestamp ? new Date(typeof s.timestamp === 'number' ? s.timestamp : s.timestamp).toLocaleDateString(curLang==='zh'?'zh-CN':'en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
       const name = escHtml(s.firstPrompt || s.projectShort || (curLang==='zh'?'未命名':'Untitled'));
       const proj = s.projectShort || '';
-      return `<div class="web-conv-item" onclick="showSessionDetail('${s.sessionId}')">
-        <div class="web-conv-header">
-          <span class="ep-badge ep-desktop">Desktop</span>
-          <span class="web-conv-name">${name}</span>
-          <span class="web-conv-date">${date}</span>
+      return `<div class="web-conv-item" style="display:flex;align-items:flex-start;gap:8px">
+        <input type="checkbox" class="sess-check" data-sid="${s.sessionId}" onclick="event.stopPropagation();updateCompareBtn()" style="margin-top:6px">
+        <div style="flex:1;cursor:pointer" onclick="showSessionDetail('${s.sessionId}')">
+          <div class="web-conv-header">
+            <span class="ep-badge ep-desktop">Desktop</span>
+            <span class="web-conv-name">${name}</span>
+            <span class="web-conv-date">${date}</span>
+          </div>
+          <div class="web-conv-summary">${proj}</div>
         </div>
-        <div class="web-conv-summary">${proj}</div>
       </div>`;
     }).join('');
   }
