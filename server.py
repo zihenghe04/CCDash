@@ -473,11 +473,11 @@ def _scan_all_projects(force=False):
                         evt_type = evt.get("type", "")
                         ts = evt.get("timestamp", "")
 
-                        # Track entrypoint per session (first seen wins)
-                        if session_id not in session_entrypoints:
-                            ep = evt.get("entrypoint", "")
-                            if ep:
-                                session_entrypoints[session_id] = ep
+                        # Track entrypoint per session (last seen wins —
+                        # user may --resume from a different entrypoint)
+                        ep = evt.get("entrypoint", "")
+                        if ep:
+                            session_entrypoints[session_id] = ep
 
                         if evt_type == "user" and "message" in evt:
                             date = ts_to_date(ts) if isinstance(ts, str) else ""
