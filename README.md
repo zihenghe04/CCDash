@@ -12,6 +12,7 @@
   </p>
 
   <p>
+    <a href="https://zihenghe04.github.io/CCDash/"><strong>🌐 Live Demo</strong></a> &bull;
     <a href="#-why-ccdash">Why?</a> &bull;
     <a href="#-features">Features</a> &bull;
     <a href="#%EF%B8%8F-screenshots">Screenshots</a> &bull;
