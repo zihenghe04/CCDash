@@ -1,8 +1,15 @@
 #!/usr/bin/env swift
 import Foundation
 
-// Read config from dashboard/config.json
+// Read config — env vars take priority (for multi-account), then config.json
 func readConfig() -> (sessionKey: String, orgId: String)? {
+    // Check environment variables first (set by server for multi-account)
+    let envSK = ProcessInfo.processInfo.environment["CLAUDE_SESSION_KEY"] ?? ""
+    let envOID = ProcessInfo.processInfo.environment["CLAUDE_ORG_ID"] ?? ""
+    if !envSK.isEmpty && !envOID.isEmpty {
+        return (envSK, envOID)
+    }
+    // Fall back to config.json
     let configPath = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("config.json")
     guard let data = try? Data(contentsOf: configPath),
           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
