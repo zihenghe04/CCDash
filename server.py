@@ -3915,15 +3915,24 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         codex_scan = _scan_codex() if _codex_enabled() else None
         if codex_scan:
             scan = _merge_codex_into_scan(scan, codex_scan)
-        # Filter daily tokens by source
+        # Filter daily data by source
+        claude_models = set()
         if source != "all":
             claude_models = set(_scan_all_projects(force=False).get("models", {}).keys())
             for d_data in scan.get("daily", {}).values():
                 if "tokens" in d_data:
+                    orig_tokens = d_data["tokens"]
                     if source == "claude":
-                        d_data["tokens"] = {m: v for m, v in d_data["tokens"].items() if m in claude_models}
+                        d_data["tokens"] = {m: v for m, v in orig_tokens.items() if m in claude_models}
                     elif source == "codex":
-                        d_data["tokens"] = {m: v for m, v in d_data["tokens"].items() if m not in claude_models}
+                        d_data["tokens"] = {m: v for m, v in orig_tokens.items() if m not in claude_models}
+                    # Scale messages/sessions/tools proportionally by token volume
+                    orig_total = sum(t.get("input",0)+t.get("output",0)+t.get("cache_read",0)+t.get("cache_create",0) for t in orig_tokens.values()) or 1
+                    filt_total = sum(t.get("input",0)+t.get("output",0)+t.get("cache_read",0)+t.get("cache_create",0) for t in d_data["tokens"].values())
+                    ratio = filt_total / orig_total
+                    d_data["messages"] = round(d_data.get("messages", 0) * ratio)
+                    d_data["sessions"] = max(1, round(d_data.get("sessions", 0) * ratio)) if filt_total > 0 else 0
+                    d_data["tools"] = round(d_data.get("tools", 0) * ratio)
         daily = scan.get("daily", {})
         models = scan.get("models", {})
         today = datetime.date.today()
@@ -3936,7 +3945,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             while d <= end_date:
                 ds = d.isoformat()
                 dd = daily.get(ds, {})
-                if dd:
+                if dd and dd.get("tokens"):
                     stats["messages"] += dd.get("messages", 0)
                     stats["sessions"] += dd.get("sessions", 0)
                     stats["tools"] += dd.get("tools", 0)
