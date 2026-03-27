@@ -55,6 +55,9 @@ _codex_logs_cache = {"data": None, "time": 0}
 _claude_usage_cache = {"data": None, "time": 0}
 CLAUDE_USAGE_TTL = 60
 
+_web_conv_cache = {"data": None, "time": 0}
+WEB_CONV_TTL = 120
+
 
 # ============================================================
 # 远程 Agent 聚合
@@ -101,6 +104,7 @@ def _clear_all_caches():
     _history_cache.update(data=None, time=0, mtime=0)
     _codex_cache.update(data=None, time=0)
     _codex_logs_cache.update(data=None, time=0)
+    _web_conv_cache.update(data=None, time=0)
 
 
 def _get_active_remotes():
@@ -426,6 +430,7 @@ def _scan_all_projects(force=False):
     models = {}      # model -> {in, out, cr, cc, calls}
     projects = {}    # project_dir_name -> {messages, tokens_total, sessions: set, friendly_name, models: {model: {in,out,cr,cc}}}
     tools_stats = {} # tool_name -> {"calls": int, "sessions": set()}
+    session_entrypoints = {}  # session_id -> entrypoint (cli, claude-desktop, sdk-ts, etc.)
     total_messages = 0
     total_sessions = set()
     total_tokens = 0
@@ -464,6 +469,12 @@ def _scan_all_projects(force=False):
 
                         evt_type = evt.get("type", "")
                         ts = evt.get("timestamp", "")
+
+                        # Track entrypoint per session (first seen wins)
+                        if session_id not in session_entrypoints:
+                            ep = evt.get("entrypoint", "")
+                            if ep:
+                                session_entrypoints[session_id] = ep
 
                         if evt_type == "user" and "message" in evt:
                             date = ts_to_date(ts) if isinstance(ts, str) else ""
@@ -582,6 +593,7 @@ def _scan_all_projects(force=False):
         "models": models,
         "projects": projects,
         "tools_stats": tools_stats,
+        "session_entrypoints": session_entrypoints,
         "total_messages": total_messages,
         "total_sessions": len(total_sessions),
         "total_tokens": total_tokens,
@@ -1209,6 +1221,7 @@ def _scan_today():
                             "cache_create": cc,
                             "cost_usd": row_cost,
                             "source": "claude",
+                            "entrypoint": evt.get("entrypoint", "cli"),
                         })
                         totals["input"] += inp
                         totals["output"] += out
@@ -1463,6 +1476,7 @@ def _scan_all_logs(force=False):
                             "duration_ms": duration_ms,
                             "cost_usd": round(_calc_cost(model, inp, out, cr, cc), 6),
                             "source": "claude",
+                            "entrypoint": evt.get("entrypoint", "cli"),
                         })
             except Exception:
                 continue
@@ -1612,6 +1626,134 @@ def _fetch_claude_usage():
 
 
 # ============================================================
+# Claude.ai Web Conversations
+# ============================================================
+def _fetch_web_conversations():
+    """Fetch conversation list from claude.ai via Swift script (cached)"""
+    now = time.time()
+    if _web_conv_cache["data"] and (now - _web_conv_cache["time"]) < WEB_CONV_TTL:
+        return _web_conv_cache["data"]
+
+    swift_path = DASHBOARD_DIR / "fetch-web-conversations.swift"
+    if not swift_path.exists():
+        return {"error": "swift_script_missing"}
+
+    # Check if session_key is configured
+    config = _load_config()
+    if not config.get("claude_session_key") or not config.get("claude_org_id"):
+        return {"error": "not_configured"}
+
+    try:
+        result = subprocess.run(
+            ["swift", str(swift_path), "list"],
+            capture_output=True, text=True, timeout=20,
+            cwd=str(DASHBOARD_DIR)
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            data = json.loads(result.stdout.strip())
+            if isinstance(data, dict) and data.get("error"):
+                return data
+            # data is a list of conversations from the API
+            conversations = []
+            if isinstance(data, list):
+                for c in data:
+                    conversations.append({
+                        "uuid": c.get("uuid", ""),
+                        "name": c.get("name", ""),
+                        "model": c.get("model") or c.get("default_model") or "",
+                        "created_at": c.get("created_at", ""),
+                        "updated_at": c.get("updated_at", ""),
+                        "summary": c.get("summary", ""),
+                        "message_count": c.get("message_count"),
+                    })
+            result_data = conversations
+            _web_conv_cache["data"] = result_data
+            _web_conv_cache["time"] = now
+            return result_data
+        else:
+            err = result.stderr.strip() or result.stdout.strip() or "unknown"
+            print(f"  [Web Conv] Swift error: {err}")
+            return {"error": err}
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout"}
+    except Exception as e:
+        print(f"  [Web Conv] Failed: {e}")
+        return {"error": str(e)}
+
+
+def _fetch_web_conversation_detail(uuid):
+    """Fetch a single conversation with messages from claude.ai"""
+    swift_path = DASHBOARD_DIR / "fetch-web-conversations.swift"
+    if not swift_path.exists():
+        return {"error": "swift_script_missing"}
+
+    config = _load_config()
+    if not config.get("claude_session_key") or not config.get("claude_org_id"):
+        return {"error": "not_configured"}
+
+    # Validate UUID
+    import re as re_mod
+    if not re_mod.match(r'^[0-9a-fA-F-]+$', uuid):
+        return {"error": "invalid_uuid"}
+
+    try:
+        result = subprocess.run(
+            ["swift", str(swift_path), "detail", uuid],
+            capture_output=True, text=True, timeout=20,
+            cwd=str(DASHBOARD_DIR)
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            data = json.loads(result.stdout.strip())
+            if isinstance(data, dict) and data.get("error"):
+                return data
+
+            # Parse the conversation detail
+            messages = []
+            chat_messages = data.get("chat_messages", [])
+            for i, msg in enumerate(chat_messages):
+                sender = msg.get("sender", "")
+                text = ""
+                # Extract text from content blocks
+                content = msg.get("content", [])
+                if isinstance(content, list):
+                    text_parts = []
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                    text = "\n".join(text_parts)
+                elif isinstance(content, str):
+                    text = content
+                # Also check for top-level text field
+                if not text and msg.get("text"):
+                    text = msg["text"]
+
+                messages.append({
+                    "sender": sender,
+                    "text": text,
+                    "created_at": msg.get("created_at", ""),
+                    "updated_at": msg.get("updated_at", ""),
+                    "uuid": msg.get("uuid", ""),
+                    "index": i,
+                })
+
+            return {
+                "name": data.get("name", ""),
+                "model": data.get("model") or data.get("default_model") or "",
+                "created_at": data.get("created_at", ""),
+                "updated_at": data.get("updated_at", ""),
+                "message_count": len(messages),
+                "messages": messages,
+            }
+        else:
+            err = result.stderr.strip() or result.stdout.strip() or "unknown"
+            return {"error": err}
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ============================================================
 # HTTP Handler
 # ============================================================
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -1652,6 +1794,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/rhythm": self.api_rhythm,
             "/api/session-chain": self.api_session_chain,
             "/api/hourly-trend": self.api_hourly_trend,
+            "/api/web-conversations": self.api_web_conversations,
+            "/api/web-conversation-detail": self.api_web_conversation_detail,
             "/api/settings": self.api_settings_get,
         }
 
@@ -2053,14 +2197,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             else:
                 m_data["avg_context_usage_pct"] = 0
             m_data["provider"] = _model_provider(m_name)
-            # Determine source: claude takes priority if model exists in both
-            if "source" not in m_data:
-                if m_name in claude_model_names:
-                    m_data["source"] = "claude"
-                elif m_name in codex_model_names:
-                    m_data["source"] = "codex"
-                else:
-                    m_data["source"] = "claude"
         self.send_json({"models": models})
 
     def api_projects(self, params):
@@ -2125,6 +2261,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         history = _load_history() if source != "codex" else []
 
+        # Get session entrypoints from scan cache
+        scan_data = _scan_all_projects()
+        ep_map = scan_data.get("session_entrypoints", {}) if scan_data else {}
+
         # 按时间倒序
         entries = sorted(history, key=lambda x: x.get("timestamp", 0), reverse=True)
 
@@ -2175,6 +2315,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "projectShort": project_short,
                 "firstPrompt": entry.get("display", "")[:100],
                 "source": "claude",
+                "entrypoint": ep_map.get(sid, "cli"),
             })
             if len(unique_sessions) >= limit:
                 break
@@ -2935,6 +3076,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def api_claude_usage(self, params):
         """Claude.ai weekly usage from official API"""
         data = _fetch_claude_usage()
+        self.send_json(data)
+
+    def api_web_conversations(self, params):
+        """List claude.ai web conversations"""
+        data = _fetch_web_conversations()
+        self.send_json(data)
+
+    def api_web_conversation_detail(self, params):
+        """Get a single web conversation with messages"""
+        conv_id = params.get("id", [""])[0]
+        if not conv_id:
+            self.send_json({"error": "missing id parameter"}, 400)
+            return
+        data = _fetch_web_conversation_detail(conv_id)
         self.send_json(data)
 
     def api_settings_get(self, params):
