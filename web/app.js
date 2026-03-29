@@ -1525,6 +1525,7 @@ async function showSessionDetail(sessionId) {
             <span class="timeline-event-time">${timeStr}</span>
           </div>
           <div class="timeline-event-content">${escHtml(g.content||'')}</div>
+          ${(g.content||'').length > 300 ? `<button class="tl-expand-btn" onclick="toggleExpand(this)">${curLang==='zh'?'展开全部':'Show more'}</button>` : ''}
         </div>`;
       }
       // Assistant group
@@ -1571,7 +1572,7 @@ async function showSessionDetail(sessionId) {
             <span class="timeline-event-time">${timeStr}</span>
             <span class="timeline-event-meta">${metaParts.join(' · ')}</span>
           </div>
-          ${hasContent?`<div class="timeline-event-content">${escHtml(ev.content)}</div>`:''}
+          ${hasContent?`<div class="timeline-event-content">${escHtml(ev.content)}</div>${(ev.content||'').length > 300 ? `<button class="tl-expand-btn" onclick="toggleExpand(this)">${curLang==='zh'?'展开全部':'Show more'}</button>` : ''}`:''}
           ${toolsLine}
         </div>`;
       }
@@ -2339,6 +2340,23 @@ async function testWebhook() {
     if (r.ok) notyf.success(curLang==='zh'?'测试成功':'Test sent');
     else notyf.error(r.error||'Failed');
   } catch(e) { notyf.error(String(e)); }
+}
+
+/* ===== Timeline expand/collapse ===== */
+function toggleExpand(btn) {
+  const content = btn.previousElementSibling;
+  if (!content || !content.classList.contains('timeline-event-content')) {
+    // Button might be after the content div — search siblings
+    const parent = btn.parentElement;
+    const contentEl = parent?.querySelector('.timeline-event-content');
+    if (contentEl) {
+      const expanded = contentEl.classList.toggle('expanded');
+      btn.textContent = expanded ? (curLang==='zh'?'收起':'Show less') : (curLang==='zh'?'展开全部':'Show more');
+    }
+    return;
+  }
+  const expanded = content.classList.toggle('expanded');
+  btn.textContent = expanded ? (curLang==='zh'?'收起':'Show less') : (curLang==='zh'?'展开全部':'Show more');
 }
 
 /* ===== Analytics tab switch ===== */
