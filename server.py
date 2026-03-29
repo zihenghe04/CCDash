@@ -1094,7 +1094,7 @@ def _parse_codex_session(jsonl_path):
                         for block in content_blocks:
                             if isinstance(block, dict) and block.get("type") == "output_text":
                                 text_parts.append(block.get("text", ""))
-                    content_text = " ".join(text_parts)[:500]
+                    content_text = " ".join(text_parts)
                     if content_text.strip():
                         events_out.append({
                             "type": "assistant",
@@ -2713,7 +2713,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     if isinstance(msg, dict):
                         raw_content = msg.get("content", "")
                         if isinstance(raw_content, str):
-                            content = raw_content[:500]
+                            content = raw_content
                         elif isinstance(raw_content, list):
                             # Array of content blocks
                             text_parts = []
@@ -2723,7 +2723,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                                         text_parts.append(block.get("text", ""))
                                 elif isinstance(block, str):
                                     text_parts.append(block)
-                            content = " ".join(text_parts)[:500]
+                            content = " ".join(text_parts)
                     events_out.append({
                         "type": "user",
                         "timestamp": ts,
@@ -2781,7 +2781,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     elif isinstance(content_blocks, str):
                         text_parts.append(content_blocks)
 
-                    content_text = " ".join(text_parts)[:500]
+                    content_text = " ".join(text_parts)
 
                     events_out.append({
                         "type": "assistant",
