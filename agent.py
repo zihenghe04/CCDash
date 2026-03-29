@@ -734,11 +734,12 @@ class AgentHandler(BaseHTTPRequestHandler):
                     if isinstance(msg, dict):
                         c = msg.get("content", "")
                         if isinstance(c, str):
-                            content = c[:500]
+                            content = c
                         elif isinstance(c, list):
                             for block in c:
                                 if isinstance(block, dict) and block.get("type") == "text":
-                                    content = block.get("text", "")[:500]
+                                    content = block.get("text", "")
+
                                     break
                     events.append({"type": "user", "timestamp": ts, "content": content})
                     if not first_ts:
@@ -772,7 +773,7 @@ class AgentHandler(BaseHTTPRequestHandler):
                             if not isinstance(block, dict):
                                 continue
                             if block.get("type") == "text":
-                                content_text = block.get("text", "")[:500]
+                                content_text = block.get("text", "")
                             elif block.get("type") == "tool_use":
                                 tool_name = block.get("name", "?")
                                 tools_used.append(tool_name)
