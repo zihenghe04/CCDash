@@ -144,7 +144,7 @@ const I18N = {
     plugins:'Plugins', pluginsDesc:'Data source plugin management', pluginBuiltin:'Built-in', pluginCustom:'Custom'
   }
 };
-let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
+let curLang = localStorage.getItem('claude_dash_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
 
 function applyI18n() {
   const t = I18N[curLang] || I18N.zh;
@@ -166,9 +166,21 @@ function toggleLang() {
   curLang = curLang === 'zh' ? 'en' : 'zh';
   localStorage.setItem('claude_dash_lang', curLang);
   applyI18n();
+  { const _lu = document.getElementById('lastUp'); if (_lu) _lu.textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
   renderCharts();
   loadLive();
   loadLogs();
+  loadRhythm();
+  loadEfficiency();
+  loadInsights();
+  loadModels();
+  loadOverview();
+  loadTodayBreakdown();
+  loadReport('weekly');
+  loadGitStats();
+  loadMcpStats();
+  loadMcpTrend();
+  loadTools();
 }
 
 /* ---- Theme ---- */
@@ -192,6 +204,14 @@ function toggleTheme() {
   updateThemeIcon(n);
   renderCharts();
   if (window._ringData) drawRing(...window._ringData);
+  loadOverview();
+  loadTodayBreakdown();
+  loadTools();
+  loadMcpStats();
+  loadMcpTrend();
+  loadEfficiency();
+  loadRhythm();
+  loadModels();
 }
 initTheme();
 
@@ -569,7 +589,7 @@ async function loadStatus() {
     document.getElementById('weekDots').innerHTML = dd.activity.map(a =>
       `<div class="week-dot${a.messages>0?' filled':''}" title="${a.date}: ${a.messages}"></div>`
     ).join('');
-    document.getElementById('weekPct').textContent = wk + ' msgs';
+    document.getElementById('weekPct').textContent = wk + (curLang==='zh' ? ' 消息' : ' msgs');
     // Build sparkline data from last 7 days
     window._spark7 = {
       msgs: dd.activity.map(a => a.messages),
@@ -666,7 +686,7 @@ function renderOverviewData(d) {
   // Usage projection (estimated daily cost at current rate)
   const projEl = document.getElementById('projCost');
   if (projEl && d.burn_rate_cost_per_hour) {
-    projEl.textContent = '$' + (d.burn_rate_cost_per_hour * 24).toFixed(0) + '/day';
+    projEl.textContent = '$' + (d.burn_rate_cost_per_hour * 24).toFixed(0) + (curLang==='zh' ? '/天' : '/day');
   }
   // Cost is updated by loadModels() to ensure consistency with analytics page
   window._ringData = [d.total_input||0, d.total_cache_read||0, d.total_cache_create||0, d.cache_hit_rate||0];
@@ -1052,7 +1072,7 @@ async function loadTodayBreakdown() {
     plotOptions:{pie:{donut:{size:'60%',labels:{show:true,name:{show:false},value:{show:true,fontSize:'15px',fontWeight:700,fontFamily:'JetBrains Mono',color:dk?'#e8ecf1':'#111827',formatter:()=>totalCostStr},total:{show:true,label:'Total',formatter:()=>totalCostStr}}}}},
     dataLabels:{enabled:false},legend:{show:false},stroke:{width:0},
     theme:apexTheme(),
-    tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>'$'+v.toFixed(2)}}
+    tooltip:{theme:dk?'dark':'light',style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>'$'+v.toFixed(2)}}
   });
   window._todayDonut.render();
 }
@@ -1324,7 +1344,7 @@ async function loadTools() {
       plotOptions:{pie:{donut:{size:'60%',labels:{show:true,name:{show:false},value:{show:true,fontSize:'15px',fontWeight:700,fontFamily:'JetBrains Mono',color:dk?'#e2e8f0':'#09090b',formatter:()=>fmt(d.total_calls)},total:{show:true,label:'Total',formatter:()=>fmt(d.total_calls)}}}}},
       dataLabels:{enabled:false},legend:{show:false},stroke:{width:0},
       theme:apexTheme(),
-      tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>fmt(v)+' calls'}}
+      tooltip:{theme:dk?'dark':'light',style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>fmt(v)+' calls'}}
     });
     chTools.render();
     const listEl = document.getElementById('toolsList');
@@ -2025,7 +2045,7 @@ async function loadMcpStats() {
       plotOptions:{pie:{donut:{size:'60%',labels:{show:true,name:{show:false},value:{show:true,fontSize:'15px',fontWeight:700,fontFamily:'JetBrains Mono',color:dk?'#e2e8f0':'#09090b',formatter:()=>fmt(d.total_calls)},total:{show:true,label:'Total',formatter:()=>fmt(d.total_calls)}}}}},
       dataLabels:{enabled:false},legend:{show:false},stroke:{width:0},
       theme:apexTheme(),
-      tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>fmt(v)+' calls'}}
+      tooltip:{theme:dk?'dark':'light',style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>fmt(v)+' calls'}}
     });
     chMcp.render();
     const listEl = document.getElementById('mcpList');
@@ -2057,7 +2077,7 @@ async function loadMcpTrend() {
       stroke:{curve:'smooth',width:2},
       dataLabels:{enabled:false},
       grid:{borderColor:dk?'#1e293b':'#e2e8f0',strokeDashArray:3},
-      tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>fmt(v)+' calls'}},
+      tooltip:{theme:dk?'dark':'light',style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>fmt(v)+' calls'}},
       legend:{position:'top',fontSize:'11px',fontFamily:'Inter',labels:{colors:dk?'#94a3b8':'#64748b'}}
     });
     chMcpTrend.render();
@@ -2162,7 +2182,7 @@ async function loadEfficiency() {
         stroke:{curve:'smooth',width:2},
         dataLabels:{enabled:false},
         grid:{borderColor:dk?'#1e293b':'#e2e8f0',strokeDashArray:3},
-        tooltip:{style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>v+'%'}},
+        tooltip:{theme:dk?'dark':'light',style:{fontFamily:'JetBrains Mono',fontSize:'11px'},y:{formatter:v=>v+'%'}},
         legend:{position:'top',fontSize:'11px',fontFamily:'Inter',labels:{colors:dk?'#94a3b8':'#64748b'}},
         markers:{size:0,hover:{size:4}}
       });
@@ -2556,7 +2576,7 @@ async function init() {
   const ov = document.getElementById('ldOv');
   ov.style.opacity = '0';
   setTimeout(() => ov.remove(), 600);
-  document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  { const _lu = document.getElementById('lastUp'); if (_lu) _lu.textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
   setInterval(loadStatus, 30000);
   startAutoRefresh();
   applyI18n();
@@ -2571,7 +2591,7 @@ async function refreshAll() {
     await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations(), loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget(), loadRhythm(), loadGitStats(), loadReport('weekly')]);
     notyf.success(curLang==='zh' ? '已更新' : 'Updated');
   } catch { notyf.error(curLang==='zh' ? '刷新失败' : 'Refresh failed'); }
-  document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  { const _lu = document.getElementById('lastUp'); if (_lu) _lu.textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
 }
 
 document.addEventListener('DOMContentLoaded', () => { init(); });
