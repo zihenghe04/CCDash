@@ -144,7 +144,7 @@ const I18N = {
     plugins:'Plugins', pluginsDesc:'Data source plugin management', pluginBuiltin:'Built-in', pluginCustom:'Custom'
   }
 };
-let curLang = localStorage.getItem('claude_dash_lang') || 'zh';
+let curLang = localStorage.getItem('claude_dash_lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
 
 function applyI18n() {
   const t = I18N[curLang] || I18N.zh;
@@ -166,9 +166,16 @@ function toggleLang() {
   curLang = curLang === 'zh' ? 'en' : 'zh';
   localStorage.setItem('claude_dash_lang', curLang);
   applyI18n();
+  { const _lu = document.getElementById('lastUp'); if (_lu) _lu.textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
   renderCharts();
   loadLive();
   loadLogs();
+  loadRhythm();
+  loadEfficiency();
+  loadInsights();
+  loadModels();
+  loadOverview();
+  loadTodayBreakdown();
 }
 
 /* ---- Theme ---- */
@@ -2556,7 +2563,7 @@ async function init() {
   const ov = document.getElementById('ldOv');
   ov.style.opacity = '0';
   setTimeout(() => ov.remove(), 600);
-  document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  { const _lu = document.getElementById('lastUp'); if (_lu) _lu.textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
   setInterval(loadStatus, 30000);
   startAutoRefresh();
   applyI18n();
@@ -2571,7 +2578,7 @@ async function refreshAll() {
     await Promise.all([loadStatus(), loadOverview(), loadCharts(), loadModels(), loadProjects(), loadSess(), loadLive(), loadLogs(), loadTools(), loadWebConversations(), loadTodayBreakdown(), loadRatePrediction(), loadMcpStats(), loadMcpTrend(), loadEfficiency(), loadInsights(), loadBudget(), loadRhythm(), loadGitStats(), loadReport('weekly')]);
     notyf.success(curLang==='zh' ? '已更新' : 'Updated');
   } catch { notyf.error(curLang==='zh' ? '刷新失败' : 'Refresh failed'); }
-  document.getElementById('lastUp').textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  { const _lu = document.getElementById('lastUp'); if (_lu) _lu.textContent = (curLang==='zh' ? '更新于 ' : 'Updated ') + new Date().toLocaleTimeString(curLang==='zh'?'zh-CN':'en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
 }
 
 document.addEventListener('DOMContentLoaded', () => { init(); });
