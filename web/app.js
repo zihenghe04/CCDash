@@ -204,6 +204,14 @@ function toggleTheme() {
   updateThemeIcon(n);
   renderCharts();
   if (window._ringData) drawRing(...window._ringData);
+  loadOverview();
+  loadTodayBreakdown();
+  loadTools();
+  loadMcpStats();
+  loadMcpTrend();
+  loadEfficiency();
+  loadRhythm();
+  loadModels();
 }
 initTheme();
 
