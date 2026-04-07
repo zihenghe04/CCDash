@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Claude Usage Dashboard — 订阅用量全局监控后端"""
 
+import sys
+import io
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 import json
 import os
 import time
@@ -4524,7 +4531,7 @@ def main():
         print("  ⚠ 实时使用率缓存不可用")
 
     if HISTORY_FILE.exists():
-        line_count = sum(1 for _ in open(HISTORY_FILE))
+        line_count = sum(1 for _ in open(HISTORY_FILE, encoding='utf-8', errors='replace'))
         print(f"  ✅ 历史记录: {line_count} 条")
     else:
         print("  ⚠ 历史记录不存在")
