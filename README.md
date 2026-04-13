@@ -20,6 +20,7 @@
     <a href="#%EF%B8%8F-screenshots">Screenshots</a> &bull;
     <a href="#-quick-start">Quick Start</a> &bull;
     <a href="#-remote-monitoring">Remote</a> &bull;
+    <a href="ROADMAP.md">Roadmap</a> &bull;
     <a href="#%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3">中文</a>
   </p>
 </div>
@@ -35,7 +36,7 @@
 - 🍏 **macOS launchd auto-start** — one-command install (`./launchd/install.sh server`) for auto-start at login + auto-restart on crash. Optional `autossh` SSH-tunnel launcher for remote agents. Templates only, no hardcoded paths.
 - 🪟 **Windows compatibility** (via [#6](https://github.com/zihenghe04/CCDash/pull/6)) — UTF-8 stdio wrapping, history file encoding fix, theme toggle re-renders dynamic components.
 
-See the full [CHANGELOG](CHANGELOG.md) for earlier releases.
+See the full [CHANGELOG](CHANGELOG.md) for earlier releases, or the [ROADMAP](ROADMAP.md) for what's coming next (v0.10 polish + observability, v0.11 file heat tracking, v1.0 stable).
 
 ---
 
@@ -454,6 +455,8 @@ CCDash 是一个**自托管的实时分析面板**，用于监控 [Claude Code](
 - 🔌 **API 端点自动检测** ([#4](https://github.com/zihenghe04/CCDash/issues/4)) — 设置页自动检测 Claude Code 连的是**官方 API** 还是**中转站/代理**，凭据自动掩码（读环境变量 → `~/.claude/settings.json` → `~/.claude.json`）。
 - 🍏 **macOS launchd 开机自启** — 一条命令安装：`./launchd/install.sh server [tunnel]`。崩溃自动重启，可选 autossh 隧道自启。模板无任何硬编码路径/IP。
 - 🪟 **Windows 兼容性修复**（合并 [#6](https://github.com/zihenghe04/CCDash/pull/6)）— UTF-8 stdio 包装、history.jsonl 编码修复、主题切换动态组件重渲染。
+
+完整历史见 [CHANGELOG](CHANGELOG.md)，后续计划见 [ROADMAP](ROADMAP.md)（v0.10 可观测性、v0.11 文件热力追踪、v1.0 稳定版）。
 
 ### 为什么需要 CCDash？
 

@@ -1,348 +1,171 @@
-# CCDash Roadmap / 迭代路线图
+# CCDash Roadmap
 
-> Last updated: 2026-03-27 · Current version: **v0.5.1**
+> **Last updated**: 2026-04-13 · **Current release**: [v0.9.2](https://github.com/zihenghe04/CCDash/releases/tag/v0.9.2) · **Next target**: v0.10
 
----
+This document tracks what has shipped, what's next, and what's parked. See [CHANGELOG.md](CHANGELOG.md) for detailed per-release notes.
 
-## Phase 1: Analytics Deep Dive (v0.6.x)
-> Focus: 挖掘现有数据的深层价值，零新依赖
+**Iteration principles**
 
-### v0.6.0 — MCP Server Analytics / MCP 工具分析
-**Priority: HIGH** · Complexity: LOW · Data: already in JSONL
-
-JSONL 中已有 `tool_use` 事件（包含工具名），但目前只做了简单的调用次数统计。MCP 生态正在爆发，用户迫切需要了解每个 MCP Server 的消耗情况。
-
-**Features:**
-- MCP Server 调用频次排行（按 server 分组，如 `mcp__playwright__*` → Playwright）
-- 每个 MCP Server 的 token 消耗（触发该工具的 assistant 响应的 token 开销）
-- MCP 调用成功率（通过 `tool_result` 中是否有 error 判断）
-- MCP 使用趋势图（每日调用量变化）
-- 新增 Analytics 页面 "MCP Tools" 标签页：堆叠柱状图 + 明细表
-
-**Backend:**
-- `GET /api/mcp-stats` — MCP server 级别的聚合统计
-- `GET /api/mcp-trend` — MCP 使用每日趋势
-
-**UI:** Analytics 页新增标签页，复用现有 donut + bar chart 组件
+1. **Zero dependencies first** — Python stdlib + Vanilla JS. No `pip install`, no build step.
+2. **Data already there** — prefer features that can be implemented from existing JSONL data.
+3. **Incremental value** — every release must be useful on its own; no "wait for the whole feature set".
+4. **Privacy by default** — nothing leaves the host unless the user explicitly configures it (webhooks are the only outbound call).
+5. **User-driven** — [GitHub Issues](https://github.com/zihenghe04/CCDash/issues) are the primary signal for what to build next.
 
 ---
 
-### v0.6.1 — Rate Limit Predictor / 限速预测器
-**Priority: HIGH** · Complexity: MEDIUM · Data: existing burn rate
+## ✅ Shipped
 
-用户最大的痛点之一："我还能用多久才触发限速？" 目前只有 burn rate 指标，但没有预测能力。
+### Phase 1 — Analytics Deep Dive · [v0.6.x](https://github.com/zihenghe04/CCDash/releases/tag/v0.6.0)
+- **v0.6.0** MCP Server Analytics — per-server call / session grouping, trend line, Analytics page donut
+- **v0.6.1** Rate Limit Predictor — 5m/15m/30m/60m sliding windows, risk level, countdown
+- **v0.6.2** Prompt Efficiency — output ratio, cache grade, interaction-mode classification
 
-**Features:**
-- 基于过去 30min 的 burn rate，预测触发 5h/7d 限速的剩余时间
-- "安全使用速率"建议：在剩余时间内均匀分配 quota 的理想 RPM
-- 限速风险等级：🟢 Safe → 🟡 Caution → 🔴 Danger → ⚫ Throttled
-- 概览页新增预测卡片，显示倒计时 + 建议
-- 历史限速事件记录（检测 quota 突然重置的时间点）
+### Phase 2 — Smart Insights · [v0.7.x](https://github.com/zihenghe04/CCDash/releases/tag/v0.7.0)
+- **v0.7.0** Cost Optimization Engine — rule-driven suggestions (model downgrade, cache, anomaly, peak hour)
+- **v0.7.1** Token Budget Management — daily/weekly/monthly limits, progress bars, threshold alerts
+- **v0.7.2** Comparison Reports — this week/month vs last, delta arrows, highlights
 
-**Backend:**
-- `GET /api/rate-prediction` — 预测数据（预计触发时间、安全速率、风险等级）
-- 基于滑动窗口的 token 消耗速率建模
+### Phase 3 — External Integration · [v0.8.0](https://github.com/zihenghe04/CCDash/releases/tag/v0.8.0)
+- **v0.8.0** Git Integration — per-commit AI cost, AI-assisted %
+- **v0.8.1** Webhook Notifications — Slack / Discord / generic HTTP, quota & budget triggers
+- **v0.8.2** CLI Quick Command — `ccdash-cli.py` (status/top/models/budget/live), `--server` for remote
 
-**UI:** 概览页 HUD 仪表盘区域新增预测信息；新增限速风险指示灯
+### Phase 4 — Advanced Features · [v0.9.0](https://github.com/zihenghe04/CCDash/releases/tag/v0.9.0)
+- **v0.9.0** Multi-Account + Plugin System — per-account quota, plugin discovery
+- **v0.9.1** Analytics tabs + multi-select session compare, many data-consistency fixes
+- **v0.9.2** Session status column (#3) + API endpoint detection (#4) + macOS launchd auto-start (server + autossh tunnel)
 
----
-
-### v0.6.2 — Prompt Efficiency Analysis / Prompt 效率分析
-**Priority: MEDIUM** · Complexity: MEDIUM · Data: existing JSONL
-
-帮助用户理解自己的 AI 使用效率，找到改进空间。
-
-**Features:**
-- 有效输出率：output_tokens / total_tokens（越高越好）
-- 缓存效率评级：Excellent (>80%) / Good (>50%) / Fair (>20%) / Poor
-- 会话效率排行：哪些 session 的 "token 性价比" 最高/最低
-- 交互模式分类：
-  - **Exploration** — 短对话、多轮提问（高 input/output ratio）
-  - **Building** — 长代码生成（高 output、多 tool_use）
-  - **Debugging** — 反复修改（多轮、高 cache_read）
-  - **Review** — 大量代码阅读（高 cache_creation）
-- 每种模式的 token 消耗对比
-- 效率趋势：你的 prompt 效率是在提高还是下降？
-
-**Backend:**
-- `GET /api/efficiency` — 效率指标 + 模式分类
-- 扩展现有扫描器，增加 per-session 效率计算
-
-**UI:** Analytics 页新增 "Efficiency" 标签页
+### Dropped / revisited
+- **Session Replay** was planned for v0.9.1 — dropped after review: the JSONL data is message-level, no file-diff or terminal output, so a "replay" would just be scrolling the existing timeline with a delay. Not worth the UI complexity. Revisit if richer event data becomes available.
 
 ---
 
-## Phase 2: Smart Insights (v0.7.x)
-> Focus: 智能分析与主动建议，从"展示数据"升级为"理解数据"
+## 🎯 Next up · v0.10 — Polish & Observability
 
-### v0.7.0 — Cost Optimization Engine / 智能成本优化
-**Priority: HIGH** · Complexity: MEDIUM-HIGH
+Target: **2026 Q2**. Focus: make the existing surface area more reliable, discoverable, and developer-friendly — not more features. Priorities are based on user feedback and observed pain points.
 
-从被动展示成本到主动优化建议。
+### v0.10.0 — Observability mode
+**Priority: HIGH** · Complexity: MEDIUM · Data: existing
 
-**Features:**
-- **模型降级建议**：检测使用 Opus 完成简单任务的 session（output < 200 tokens 且无复杂工具调用），建议用 Sonnet
-- **缓存优化建议**：检测低缓存命中率的 session，分析原因（频繁切换项目、prompt 过短等）
-- **时段优化建议**：避开高峰时段以减少限速风险
-- **成本异常检测**：某天成本异常飙升时自动标记并分析原因
-- **周度优化报告**：汇总本周的优化建议和潜在节省金额
-- 概览页新增 "Insights" 卡片，展示 top 3 优化建议
+Today CCDash is mostly a "look at the dashboard" tool. Many users run it headless on a server and want machine-readable outputs.
 
-**Backend:**
-- `GET /api/insights` — 优化建议列表（按影响金额排序）
-- 规则引擎：基于统计阈值的建议生成
-- 不依赖 LLM，纯规则驱动（保持零依赖特性）
+- `GET /metrics` Prometheus exposition endpoint — RPM / TPM / cost / quota / session counts, labelled by source/project/model
+- `GET /api/healthz` and `/api/readyz` for container orchestration
+- Structured access logs (JSONL) with opt-in to `/tmp/ccdash-access.jsonl` for Grafana/Loki pipelines
+- Optional `CCDASH_LOG_LEVEL` env var (INFO/DEBUG/QUIET)
 
-**UI:**
-- 概览页 Insights 卡片（可折叠，显示 top 3）
-- Settings 页可配置建议灵敏度
+### v0.10.1 — First-run onboarding
+**Priority: HIGH** · Complexity: LOW
 
----
+Currently a new user sees "Session Key not configured" warnings, blank budget cards, and no plugins — all with no guidance. A dedicated onboarding flow will walk them through the useful optional setup.
 
-### v0.7.1 — Token Budget Management / Token 预算管理
-**Priority: HIGH** · Complexity: MEDIUM
+- Landing modal on first run: detects missing session key / budget / webhook / remote, shows a checklist
+- Inline "Set up" buttons that link to the correct Settings section
+- "Skip for now" is always available; nothing is forced
 
-为重度用户和团队提供成本控制手段。
-
-**Features:**
-- 设定 daily / weekly / monthly token 或 cost 预算上限
-- 实时预算消耗进度条（概览页）
-- 预算预警阈值：60% / 80% / 100% 三档
-- 超标时：
-  - 面板内弹出警告 banner
-  - 可选 Webhook 通知（为 v0.8.0 做准备）
-- 预算历史：每日/每周实际 vs 预算对比折线图
-- 支持按项目设定独立预算
-
-**Backend:**
-- `GET/POST /api/budget` — 预算 CRUD
-- `GET /api/budget-status` — 当前预算消耗状态
-- 预算配置持久化到 `config.json`
-
-**UI:**
-- Settings 页新增 Budget 配置区
-- 概览页新增预算进度条
-- 超标时全局 banner 警告
-
----
-
-### v0.7.2 — Comparison Reports / 对比报表
+### v0.10.2 — Data source filters v2
 **Priority: MEDIUM** · Complexity: MEDIUM
 
-自动化的周度/月度使用报告。
+Today source switching is all-or-nothing (all / claude / codex). Power users want more control.
 
-**Features:**
-- **周报**：本周 vs 上周全维度对比（消息、token、成本、效率、模型分布）
-- **月报**：本月 vs 上月 + 月度趋势
-- 关键指标变化高亮（↑↓ 箭头 + 百分比变化）
-- 可导出为 PDF（基于浏览器 print 样式）或 Markdown
-- 报表页面：卡片式布局，自动生成摘要文本
-- "本月亮点"：最活跃的项目、最耗 token 的 session、最佳缓存命中率等
+- Multi-source selection (e.g. "Claude + Codex but not the cloud remote")
+- Per-project toggle to exclude noisy / test projects from analytics
+- Saved filter presets
 
-**Backend:**
-- `GET /api/report?type=weekly` / `GET /api/report?type=monthly`
-- 聚合现有 daily 数据生成报表
+### v0.10.3 — Performance for large histories
+**Priority: MEDIUM** · Complexity: MEDIUM
 
-**UI:** 新增 "Reports" 页面（侧边栏新 tab），或作为 Analytics 的子页面
+At 1000+ session files the full scan takes 5–10 s. Not a problem yet, but it will be.
 
----
-
-## Phase 3: External Integration (v0.8.x)
-> Focus: 与外部工具打通，构建完整工作流
-
-### v0.8.0 — Git Integration / Git 关联分析
-**Priority: HIGH** · Complexity: MEDIUM
-
-将 AI 使用与代码产出关联，量化 AI 辅助的价值。
-
-**Features:**
-- 扫描项目目录下的 `.git`，关联 Claude session 与 git commit
-- **Per-commit AI 成本**：每个 commit 时间窗口内的 Claude 消耗
-- **Per-PR AI 成本**：PR 中所有 commit 的累计 AI 消耗
-- **AI 参与度指标**：有 AI 辅助的 commit 占比
-- **代码产出效率**：每 $1 AI 成本产出多少行代码变更
-- 项目详情页增加 Git Timeline（commit + Claude session 交错展示）
-
-**Backend:**
-- `GET /api/git-stats?project=xxx` — 项目的 git 关联统计
-- 调用 `git log` 获取 commit 历史，按时间窗口匹配 session
-- 不依赖 GitHub API（纯本地 git）
-
-**UI:** 项目详情页新增 Git 关联面板
+- Incremental scan — only re-parse JSONL files whose mtime changed
+- Per-session result caching, invalidated on file touch
+- Lazy loading for the session list (load 40 rows, fetch more on scroll)
 
 ---
 
-### v0.8.1 — Webhook & Notifications / 通知系统
-**Priority: HIGH** · Complexity: MEDIUM
+## 🧪 v0.11 — Deeper session intelligence
 
-覆盖用户不在面板前的场景。
+Target: **2026 Q3**. Focus: squeeze more insight out of the data we already have.
 
-**Features:**
-- **Webhook 支持**：配置 URL + 事件类型，POST JSON payload
-- **内置模板**：
-  - Slack Incoming Webhook
-  - Discord Webhook
-  - 飞书/企业微信 Bot
-  - Generic HTTP POST
-- **触发事件**：
-  - 限速触发 / 限速解除
-  - 预算超标（60%/80%/100%）
-  - 每日摘要（每天 23:00 自动发送）
-  - 异常消耗告警
-- **通知历史**：记录每条通知的发送时间和状态
-- Settings 页配置通知规则
+### v0.11.0 — File operation heat tracking
+**Priority: MEDIUM** · Complexity: MEDIUM · Data: already in JSONL
 
-**Backend:**
-- `POST /api/webhooks` — Webhook CRUD
-- `GET /api/notification-history` — 通知历史
-- 后台定时线程检查触发条件
+`tool_use` events already contain the file paths Claude touched. Expose them as a first-class view.
 
-**注意**：Webhook 发送需要网络请求，这是首次引入对外网络调用（之前只有 LiteLLM pricing fetch）
+- "File heat" page: which files are read / edited / written most per project
+- File ↔ session cross-linking (click a file → see the sessions that touched it)
+- "Hottest files this week" widget on Overview
 
----
+### v0.11.1 — Context compression tracking
+**Priority: LOW** · Complexity: MEDIUM · Data: already in JSONL
 
-### v0.8.2 — CLI Quick Command / 命令行快查
-**Priority: MEDIUM** · Complexity: LOW
+Claude Code emits `system/compact` events when context is compressed. Surface them.
 
-终端用户不离开命令行即可查看用量。
+- Per-session context usage timeline (with compact events marked)
+- Average compression ratio
+- Warning when a project's compact-to-message ratio is unusually high
 
-**Features:**
-- 独立 Python 脚本 `ccdash` 或 `ccdash-cli.py`
-- 命令：
-  ```
-  ccdash status    — 今日概览（调用数、成本、quota）
-  ccdash top       — 项目 TOP 5
-  ccdash models    — 模型消耗排行
-  ccdash budget    — 预算进度
-  ccdash live      — 实时调用流（类似 tail -f）
-  ```
-- 彩色终端输出（ANSI escape codes）
-- 直接读取本地数据（不依赖 server.py 运行）
-- 也可连接 server.py API（`ccdash --server http://localhost:8420 status`）
-- 可作为 Claude Code hook 集成（每次对话结束后显示本次消耗）
+### v0.11.2 — Sankey token flow
+**Priority: LOW** · Complexity: MEDIUM
 
-**Implementation:** 单文件 `ccdash-cli.py`，零依赖
+Show where tokens actually go: **Project → Model → Tool** as a Sankey diagram. Eye-candy that also doubles as a debugging tool for "why is this project so expensive?"
 
 ---
 
-## Phase 4: Advanced Features (v0.9.x)
-> Focus: 高级功能，面向专业用户和团队
+## 🌐 v0.12 — Ecosystem adapters
 
-### v0.9.0 — Multi-Account Support / 多账户
-**Priority: MEDIUM** · Complexity: HIGH
+Target: **2026 Q3/Q4**. Focus: open the tent — support more AI coding CLIs via the plugin system.
 
-支持同时监控多个 Claude 账户（个人 + 公司）。
-
-**Features:**
-- 配置多个 session_key + org_id
-- 每个账户独立的 quota 追踪
-- 聚合视图：所有账户的总消耗
-- 分账户视图：切换查看单个账户
-- 账户别名（"Personal", "Work", "Team"）
-
-**Architecture change:**
-- `config.json` 支持 `accounts[]` 数组
-- quota fetcher 支持并行查询多账户
-- 前端增加账户切换器
+- **OpenCode** adapter (#v0.12.0)
+- **Continue.dev** adapter
+- **Aider** adapter
+- **Cursor / Windsurf** (where local data is available)
+- Plugin SDK docs + a "starter plugin" template repo
 
 ---
 
-### v0.9.1 — Session Replay / 会话回放
-**Priority: MEDIUM** · Complexity: HIGH
+## 🚀 v1.0 — Stable Release
 
-像录屏一样回放 coding session，适合教学和复盘。
+Target: **2026 Q4**. "Stable" means a user can rely on the feature set, the API shape, and the install story.
 
-**Features:**
-- 选择一个 session，进入回放模式
-- 按时间轴逐步展示：用户输入 → AI 响应 → 工具调用 → 文件变更
-- 可调节播放速度（1x / 2x / 4x）
-- 暂停、跳转到任意时间点
-- 标注关键节点（首次 pass、错误发生、修复完成）
-- 可导出为 GIF 或视频
+### Must have for v1.0
+- **API stability guarantees** — documented `/api/*` contract, semver for breaking changes
+- **Docker image** — `ghcr.io/zihenghe04/ccdash:1.0.0` with volume mount for `~/.claude`
+- **Homebrew formula** — `brew install ccdash`
+- **pipx installer** — `pipx install ccdash`
+- **Full user guide** — installation, configuration, remote setup, CLI, plugin development
+- **Windows support confirmed on more than just "it compiles"** — E2E tested on Win10/11
+- **Automated tests** — minimum smoke tests for scanner, cost calc, source filtering, API endpoints
+- **Performance target** — handle 5000 session files / 10 M messages without UI lag
 
-**Implementation:** 纯前端实现，基于 session_detail 数据的时序展示
-
----
-
-### v0.9.2 — Plugin System / 插件系统
-**Priority: MEDIUM** · Complexity: HIGH
-
-开放生态，让社区贡献数据源适配器。
-
-**Features:**
-- Python 插件接口：
-  ```python
-  class DataSourcePlugin:
-      name: str
-      def scan(self) -> ScanResult: ...
-      def get_sessions(self) -> list[Session]: ...
-  ```
-- 内置插件：Claude Code, Codex CLI
-- 社区插件：Cursor, Windsurf, Aider, Continue.dev, OpenCode
-- 插件发现：`plugins/` 目录自动加载
-- 插件配置通过 Settings 页管理
-- 插件 SDK 文档
+### Stretch for v1.0
+- PWA manifest (home-screen install on mobile)
+- Accessibility pass (keyboard navigation, screen reader labels)
+- i18n expansion beyond EN / ZH
 
 ---
 
-## Phase 5: v1.0 & Beyond
-> Focus: 稳定化 + 生态建设
+## 🪣 Parking lot (considered but not scheduled)
 
-### v1.0.0 — Stable Release
-- API 稳定性保证
-- 完整文档（用户指南 + API 文档 + 插件开发指南）
-- PWA 支持（manifest.json + service worker，移动端可用）
-- Docker 镜像发布
-- Homebrew formula / pip install 支持
-- 性能优化（大数据量场景：1000+ session files）
+Ideas that are *maybe* interesting but don't have a clear user need yet. Vote with 👍 on the corresponding GitHub issue to bump priority.
 
-### Future Ideas (Post v1.0)
-- **Grafana / Prometheus 导出** — `/metrics` 端点
-- **VS Code / JetBrains 侧边栏插件** — IDE 内查看用量
-- **Team Dashboard** — 多用户聚合视图（需要中心化部署）
-- **AI 驱动洞察** — 用 Claude 自动分析使用模式并生成建议
-- **Sankey Token 流向图** — 项目 → 模型 → 工具的 token 流向
-- **文件操作热力图** — 哪些文件被 AI 读写最多
+- **Grafana/Prometheus dashboards** — templates for users who already have a monitoring stack (partially subsumed by v0.10.0)
+- **VS Code / JetBrains sidebar plugin** — show quota/cost right in the IDE
+- **Team dashboard** — multi-user aggregation, requires a central store, authn/authz — **big scope, unclear demand**
+- **AI-powered insights** — use Claude itself to summarize usage patterns. Rejected for v0.7, might revisit if free-tier API gets generous
+- **Model benchmark tracking** — response quality metrics over time
+- **Session tagging** — let users manually label sessions for filtering
+- **Browser extension** — inline stats on claude.ai itself
+- **Mobile-optimized view** — `/mobile` route with tiny payload
+- **iOS/Android native app** — via a hosted CCDash API (would require central server)
+- **Cost-estimate-before-run** — Claude Code hook that warns "this prompt will cost ~$X"
 
 ---
 
-## Timeline Estimate / 时间线估算
+## 🙋 How to influence the roadmap
 
-```
-2026 Q1 (已完成)
-  ├── v0.1.0  Core dashboard
-  ├── v0.2.0  Multi-CLI (Codex)
-  ├── v0.3.0  Session detail & chain
-  ├── v0.4.0  Data source switching
-  ├── v0.5.0  Web & Desktop conversations
-  └── v0.5.1  Today's model breakdown + Demo site
-
-2026 Q2 (planned)
-  ├── v0.6.0  MCP Server Analytics          ← 1-2 days
-  ├── v0.6.1  Rate Limit Predictor          ← 1-2 days
-  ├── v0.6.2  Prompt Efficiency Analysis    ← 2-3 days
-  ├── v0.7.0  Cost Optimization Engine      ← 3-4 days
-  ├── v0.7.1  Token Budget Management       ← 2-3 days
-  └── v0.7.2  Comparison Reports            ← 2-3 days
-
-2026 Q3 (planned)
-  ├── v0.8.0  Git Integration               ← 3-4 days
-  ├── v0.8.1  Webhook & Notifications       ← 2-3 days
-  └── v0.8.2  CLI Quick Command             ← 1-2 days
-
-2026 Q4 (planned)
-  ├── v0.9.0  Multi-Account                 ← 3-5 days
-  ├── v0.9.1  Session Replay                ← 4-5 days
-  ├── v0.9.2  Plugin System                 ← 5-7 days
-  └── v1.0.0  Stable Release               ← polish + docs
-```
-
----
-
-## Principles / 迭代原则
-
-1. **Zero dependencies first** — 尽量保持纯 Python stdlib + Vanilla JS 的零依赖特性
-2. **Data already there** — 优先做能用现有 JSONL 数据实现的功能
-3. **Incremental value** — 每个版本都是可用的，不做 "等全部完成才有价值" 的功能
-4. **Privacy by default** — 所有新功能默认不发送数据到外部（Webhook 除外，且需用户显式配置）
-5. **Community driven** — 在 GitHub Issues 中征集需求优先级
+1. **Open an issue** describing your use case — not "please add X" but "I need to answer Y, how would that look?"
+2. **👍 react** on existing issues — highest-voted issues jump the queue
+3. **Send PRs** — even a one-line fix is welcome and usually ships same day
+4. **Talk to me** — [@zihenghe04 on GitHub](https://github.com/zihenghe04)
