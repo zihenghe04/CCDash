@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CCDash Tunnel — macOS launchd SSH tunnel template (for aggregating a remote agent.py)
+  Uses autossh to maintain a persistent SSH tunnel with auto-reconnect.
+
+  PREREQUISITES:
+    - autossh installed:   brew install autossh
+    - SSH key login configured (no password prompts)
+    - agent.py running on the remote host (see main README "Remote Monitoring")
+
+  SETUP:
+    1. Copy this file to ~/Library/LaunchAgents/com.ccdash.tunnel.plist
+    2. Replace the placeholders below:
+       {{AUTOSSH_BIN}}    — absolute path to autossh (find with: which autossh)
+       {{LOCAL_PORT}}     — local port CCDash will query (e.g. 8423)
+       {{REMOTE_PORT}}    — port agent.py listens on at the remote host (e.g. 8421)
+       {{REMOTE_USER}}    — SSH user
+       {{REMOTE_HOST}}    — SSH host (IP or hostname)
+    3. Load it: launchctl load ~/Library/LaunchAgents/com.ccdash.tunnel.plist
+    4. Add this remote to your config.json:
+         { "remotes": [ { "name": "Cloud",
+                          "url": "http://127.0.0.1:{{LOCAL_PORT}}",
+                          "token": "your_secret", "enabled": true } ] }
+
+  NOTE: Do NOT commit your actual plist (with real host/port) to version control.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ccdash.tunnel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{AUTOSSH_BIN}}</string>
+        <string>-M</string>
+        <string>0</string>
+        <string>-N</string>
+        <string>-L</string>
+        <string>{{LOCAL_PORT}}:127.0.0.1:{{REMOTE_PORT}}</string>
+        <string>{{REMOTE_USER}}@{{REMOTE_HOST}}</string>
+        <string>-o</string>
+        <string>ServerAliveInterval=30</string>
+        <string>-o</string>
+        <string>ServerAliveCountMax=3</string>
+        <string>-o</string>
+        <string>ExitOnForwardFailure=yes</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/ccdash-tunnel.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/ccdash-tunnel.err</string>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>

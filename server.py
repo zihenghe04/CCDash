@@ -443,6 +443,7 @@ def _scan_all_projects(force=False):
     daily_tools = {} # date -> {tool_name: calls}
     session_efficiency = {}  # session_id -> {"input": int, "output": int, "cache_read": int, "cache_create": int, "calls": int, "tool_calls": int, "project": str}
     session_entrypoints = {}  # session_id -> entrypoint (cli, claude-desktop, sdk-ts, etc.)
+    session_last_ts = {}  # session_id -> ISO timestamp of the last event (for activity status)
     total_messages = 0
     total_sessions = set()
     total_tokens = 0
@@ -481,6 +482,12 @@ def _scan_all_projects(force=False):
 
                         evt_type = evt.get("type", "")
                         ts = evt.get("timestamp", "")
+
+                        # Track last activity timestamp per session (for status column)
+                        if ts and isinstance(ts, str):
+                            cur_last = session_last_ts.get(session_id, "")
+                            if ts > cur_last:
+                                session_last_ts[session_id] = ts
 
                         # Track entrypoint per session (majority wins —
                         # session may be resumed from different entrypoints)
@@ -643,6 +650,7 @@ def _scan_all_projects(force=False):
         "daily_tools": daily_tools,
         "session_efficiency": session_efficiency,
         "session_entrypoints": session_entrypoints,
+        "session_last_ts": session_last_ts,
         "total_messages": total_messages,
         "total_sessions": len(total_sessions),
         "total_tokens": total_tokens,
@@ -689,6 +697,97 @@ def _read_codex_model():
     except Exception:
         pass
     return "codex-unknown"
+
+
+def _mask_token(val, prefix=10, suffix=4):
+    if not val or not isinstance(val, str):
+        return ""
+    if len(val) <= prefix + suffix + 3:
+        return "***"
+    return val[:prefix] + "***" + val[-suffix:]
+
+
+def _detect_claude_endpoint():
+    """Detect Claude Code API endpoint (official vs. proxy/relay).
+
+    Reads from, in priority order:
+    1. Process environment (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY)
+    2. ~/.claude/settings.json `env` field (user-level Claude Code config)
+    3. ~/.claude.json (legacy / some installers)
+
+    Returns {"base_url", "auth_token_masked", "api_key_masked", "provider", "source"}.
+    """
+    info = {
+        "base_url": "",
+        "auth_token_masked": "",
+        "api_key_masked": "",
+        "provider": "official",  # official | proxy | unknown
+        "source": "",             # where it was detected
+    }
+
+    # 1. Process environment (highest priority — what Claude Code will actually use)
+    env_base = os.environ.get("ANTHROPIC_BASE_URL", "").strip()
+    env_token = os.environ.get("ANTHROPIC_AUTH_TOKEN", "").strip()
+    env_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if env_base or env_token or env_key:
+        if env_base:
+            info["base_url"] = env_base
+        if env_token:
+            info["auth_token_masked"] = _mask_token(env_token)
+        if env_key:
+            info["api_key_masked"] = _mask_token(env_key)
+        info["source"] = "environment"
+
+    # 2. ~/.claude/settings.json `env` field
+    if not info["base_url"] and not info["auth_token_masked"] and not info["api_key_masked"]:
+        try:
+            settings_path = CLAUDE_DIR / "settings.json"
+            if settings_path.exists():
+                with open(settings_path, "r", encoding="utf-8") as f:
+                    settings = json.load(f)
+                env = settings.get("env", {})
+                if isinstance(env, dict):
+                    if env.get("ANTHROPIC_BASE_URL"):
+                        info["base_url"] = env["ANTHROPIC_BASE_URL"]
+                    if env.get("ANTHROPIC_AUTH_TOKEN"):
+                        info["auth_token_masked"] = _mask_token(env["ANTHROPIC_AUTH_TOKEN"])
+                    if env.get("ANTHROPIC_API_KEY"):
+                        info["api_key_masked"] = _mask_token(env["ANTHROPIC_API_KEY"])
+                    if info["base_url"] or info["auth_token_masked"] or info["api_key_masked"]:
+                        info["source"] = "~/.claude/settings.json"
+        except Exception:
+            pass
+
+    # 3. ~/.claude.json (some alt installers)
+    if not info["base_url"] and not info["auth_token_masked"] and not info["api_key_masked"]:
+        try:
+            legacy_path = Path.home() / ".claude.json"
+            if legacy_path.exists():
+                with open(legacy_path, "r", encoding="utf-8") as f:
+                    legacy = json.load(f)
+                env = legacy.get("env", {}) if isinstance(legacy, dict) else {}
+                if isinstance(env, dict):
+                    if env.get("ANTHROPIC_BASE_URL"):
+                        info["base_url"] = env["ANTHROPIC_BASE_URL"]
+                    if env.get("ANTHROPIC_AUTH_TOKEN"):
+                        info["auth_token_masked"] = _mask_token(env["ANTHROPIC_AUTH_TOKEN"])
+                    if env.get("ANTHROPIC_API_KEY"):
+                        info["api_key_masked"] = _mask_token(env["ANTHROPIC_API_KEY"])
+                    if info["base_url"] or info["auth_token_masked"] or info["api_key_masked"]:
+                        info["source"] = "~/.claude.json"
+        except Exception:
+            pass
+
+    # Classify provider
+    base = info["base_url"].lower()
+    if not base or "anthropic.com" in base or "console.anthropic.com" in base:
+        info["provider"] = "official"
+        if not info["base_url"]:
+            info["base_url"] = "https://api.anthropic.com (default)"
+    else:
+        info["provider"] = "proxy"
+
+    return info
 
 
 # ============================================================
@@ -1441,6 +1540,7 @@ def _scan_all_logs(force=False):
             continue
         proj_friendly = friendly_project_name(project_dir.name)
         for jsonl_file in project_dir.glob("*.jsonl"):
+            file_sid = jsonl_file.stem  # filename is the session id
             try:
                 # 收集所有事件
                 events = []
@@ -1526,6 +1626,7 @@ def _scan_all_logs(force=False):
                             "cost_usd": round(_calc_cost(model, inp, out, cr, cc), 6),
                             "source": "claude",
                             "entrypoint": evt.get("entrypoint", "cli"),
+                            "session_id": file_sid,
                         })
             except Exception:
                 continue
@@ -2426,9 +2527,41 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         history = _load_history() if source != "codex" else []
 
-        # Get session entrypoints from scan cache
+        # Get session entrypoints and last-activity timestamps from scan cache
         scan_data = _scan_all_projects()
         ep_map = scan_data.get("session_entrypoints", {}) if scan_data else {}
+        last_ts_map = dict(scan_data.get("session_last_ts", {})) if scan_data else {}
+        # Overlay with fresh data from live logs cache (30s TTL) to get near-realtime status
+        try:
+            live_logs = _scan_all_logs()
+            for log in live_logs:
+                sid = log.get("session_id") or log.get("sessionId", "")
+                lts = log.get("timestamp", "")
+                if sid and lts and lts > last_ts_map.get(sid, ""):
+                    last_ts_map[sid] = lts
+        except Exception:
+            pass
+
+        def _session_status(sid):
+            """Derive working/idle/done from last activity recency."""
+            ts = last_ts_map.get(sid, "")
+            if not ts:
+                return "done"
+            dt = parse_iso_ts(ts)
+            if dt is None:
+                return "done"
+            try:
+                now_dt = datetime.datetime.now(datetime.timezone.utc)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=datetime.timezone.utc)
+                diff = (now_dt - dt).total_seconds()
+            except Exception:
+                return "done"
+            if diff < 60:
+                return "working"       # active in last minute
+            if diff < 600:
+                return "idle"          # idle in last 10 min
+            return "done"
 
         # 按时间倒序
         entries = sorted(history, key=lambda x: x.get("timestamp", 0), reverse=True)
@@ -2481,6 +2614,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "firstPrompt": entry.get("display", "")[:100],
                 "source": "claude",
                 "entrypoint": ep_map.get(sid, "cli"),
+                "status": _session_status(sid),
+                "lastActivity": last_ts_map.get(sid, ""),
             })
             if len(unique_sessions) >= limit:
                 break
@@ -2534,6 +2669,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "firstPrompt": first_prompt,
                         "source": "claude",
                         "entrypoint": ep_val,
+                        "status": _session_status(sid),
+                        "lastActivity": last_ts_map.get(sid, ""),
                     })
 
         # Sort all sessions by timestamp descending, then trim
@@ -2555,6 +2692,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         s["projectShort"] = ps + f" ({rname})"
                     if "source" not in s:
                         s["source"] = "claude"  # Default remote sessions to claude
+                    s.setdefault("status", "done")
+                    s.setdefault("lastActivity", "")
                     unique_sessions.append(s)
 
         # Merge Codex sessions (skip if source=claude)
@@ -2590,6 +2729,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                                         "projectShort": "Codex CLI",
                                         "firstPrompt": e.get("text", "")[:100],
                                         "source": "codex",
+                                        "status": "done",
+                                        "lastActivity": "",
                                     }
                             except: pass
                 # Also add sessions from index that might not be in history
@@ -2602,6 +2743,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                             "projectShort": "Codex CLI",
                             "firstPrompt": name[:100],
                             "source": "codex",
+                            "status": "done",
+                            "lastActivity": "",
                         }
                 for s in codex_sessions.values():
                     # Use thread_name if available
@@ -3346,6 +3489,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             },
         }
 
+        # Detect Claude Code API endpoint (official vs. proxy/relay)
+        api_endpoint = _detect_claude_endpoint()
+
         self.send_json({
             "remotes": config.get("remotes", []),
             "claude_session_key": _mask(config.get("claude_session_key", "")),
@@ -3353,6 +3499,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "custom_pricing": config.get("custom_pricing", {}),
             "detected_models": detected_models,
             "data_sources": data_sources,
+            "api_endpoint": api_endpoint,
         })
 
     def api_settings_post(self, data):

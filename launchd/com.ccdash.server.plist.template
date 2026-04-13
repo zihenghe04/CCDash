@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CCDash Server — macOS launchd auto-start template
+  Installs as a LaunchAgent that starts CCDash at login and auto-restarts on crash.
+
+  SETUP:
+    1. Copy this file to ~/Library/LaunchAgents/com.ccdash.server.plist
+    2. Replace {{CCDASH_DIR}} with the absolute path to your CCDash install
+       (e.g. /Users/yourname/.claude/dashboard, or /Users/yourname/Desktop/CCDash)
+    3. Replace {{PYTHON_BIN}} with your Python 3 interpreter (e.g. /usr/bin/python3)
+    4. Load it: launchctl load ~/Library/LaunchAgents/com.ccdash.server.plist
+    5. Verify:  launchctl list | grep ccdash
+
+  MANAGE:
+    launchctl unload ~/Library/LaunchAgents/com.ccdash.server.plist   # stop
+    launchctl load   ~/Library/LaunchAgents/com.ccdash.server.plist   # start
+    launchctl kickstart -k gui/$(id -u)/com.ccdash.server             # restart
+    tail -f /tmp/ccdash.log                                           # view logs
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ccdash.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PYTHON_BIN}}</string>
+        <string>{{CCDASH_DIR}}/server.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{CCDASH_DIR}}</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/ccdash.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/ccdash.err</string>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+</dict>
+</plist>
