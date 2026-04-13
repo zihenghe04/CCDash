@@ -253,6 +253,7 @@ def _scan_all(force=False, source="all"):
     daily = {}
     models = {}
     projects = {}
+    session_last_ts = {}  # session_id -> ISO timestamp of the last event (for status column)
     total_messages = 0
     total_sessions = set()
     total_tokens = 0
@@ -289,6 +290,11 @@ def _scan_all(force=False, source="all"):
 
                         evt_type = evt.get("type", "")
                         ts = evt.get("timestamp", "")
+
+                        # Track last activity timestamp for session status column
+                        if ts and isinstance(ts, str):
+                            if ts > session_last_ts.get(session_id, ""):
+                                session_last_ts[session_id] = ts
 
                         if evt_type == "user" and "message" in evt:
                             date = ts_to_date(ts) if isinstance(ts, str) else ""
@@ -364,6 +370,7 @@ def _scan_all(force=False, source="all"):
 
     result = {
         "daily": daily, "models": models, "projects": projects,
+        "session_last_ts": session_last_ts,
         "total_messages": total_messages_final, "total_sessions": len(total_sessions),
         "total_tokens": total_tokens_final,
     }
@@ -582,6 +589,27 @@ class AgentHandler(BaseHTTPRequestHandler):
                 limit = int(params.get("limit", ["50"])[0])
                 history = _load_history()
                 entries = sorted(history, key=lambda x: x.get("timestamp", 0), reverse=True)
+                # Pull per-session last-activity from scan cache for status column
+                scan_now = _scan_all()
+                last_ts_map = dict(scan_now.get("session_last_ts", {}))
+
+                def _status(sid):
+                    ts = last_ts_map.get(sid, "")
+                    if not ts:
+                        return "done"
+                    try:
+                        dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=datetime.timezone.utc)
+                        diff = (datetime.datetime.now(datetime.timezone.utc) - dt).total_seconds()
+                    except Exception:
+                        return "done"
+                    if diff < 60:
+                        return "working"
+                    if diff < 600:
+                        return "idle"
+                    return "done"
+
                 seen = set()
                 sessions = []
                 for e in entries:
@@ -594,6 +622,8 @@ class AgentHandler(BaseHTTPRequestHandler):
                         "sessionId": sid, "timestamp": e.get("timestamp", 0),
                         "project": pp, "projectShort": pp.split("/")[-1] or "~",
                         "firstPrompt": e.get("display", "")[:100],
+                        "status": _status(sid),
+                        "lastActivity": last_ts_map.get(sid, ""),
                     })
                     if len(sessions) >= limit:
                         break
