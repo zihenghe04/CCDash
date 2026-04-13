@@ -249,6 +249,38 @@ Projects from remote servers are tagged with `CLOUD` badges in the dashboard.
 
 ---
 
+## 🍏 macOS Auto-Start (launchd)
+
+Run CCDash in the background with auto-restart on crash and auto-start at login — no more "did I remember to start it?".
+
+```bash
+# Install server auto-start
+./launchd/install.sh server
+
+# Install server + SSH tunnel (prompts for remote host/port)
+./launchd/install.sh server tunnel
+
+# Uninstall
+./launchd/install.sh uninstall
+```
+
+What it does:
+
+- `launchd/install.sh server` — generates `~/Library/LaunchAgents/com.ccdash.server.plist` from the template, writes your repo path and `python3`, and loads it. Server starts at login and respawns within 5 seconds if it crashes.
+- `launchd/install.sh tunnel` — installs an `autossh` tunnel (`brew install autossh` required) that keeps `127.0.0.1:<local>` forwarded to `remote:<port>`, auto-reconnecting on dropouts. Interactively asks for user/host/port — nothing is hardcoded.
+
+Logs go to `/tmp/ccdash.log` and `/tmp/ccdash-tunnel.log`. The plist templates are in `launchd/*.template` with placeholder variables only — no private info ever hits the repo.
+
+Manual control:
+
+```bash
+launchctl list | grep ccdash                              # status
+launchctl kickstart -k gui/$(id -u)/com.ccdash.server     # restart server
+tail -f /tmp/ccdash.log                                   # tail logs
+```
+
+---
+
 ## ⌨️ CLI Tool
 
 Check usage without leaving the terminal:
@@ -505,6 +537,35 @@ ssh -L 8421:127.0.0.1:8421 user@server -N -f
 ```
 
 远程项目在面板中会显示 `CLOUD` 标签。
+
+---
+
+## 🍏 macOS 开机自启（launchd）
+
+后台运行 CCDash，崩溃自动重启，登录自动启动：
+
+```bash
+# 只装 server 自启
+./launchd/install.sh server
+
+# server + SSH 隧道（会交互式询问远程主机/端口）
+./launchd/install.sh server tunnel
+
+# 卸载
+./launchd/install.sh uninstall
+```
+
+安装器会从 `launchd/*.template` 生成真正的 plist，写入 `~/Library/LaunchAgents/`，其中仓库路径和 `python3` 会被脚本自动填充；SSH 隧道的主机/端口/用户在执行时交互式输入——**仓库里不会留下任何隐私信息**。
+
+常用命令：
+
+```bash
+launchctl list | grep ccdash                              # 查看状态
+launchctl kickstart -k gui/$(id -u)/com.ccdash.server     # 重启 server
+tail -f /tmp/ccdash.log                                   # 查看日志
+```
+
+日志输出：`/tmp/ccdash.log`（server）、`/tmp/ccdash-tunnel.log`（隧道）。
 
 ---
 

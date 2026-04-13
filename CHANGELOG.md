@@ -5,6 +5,26 @@ All notable changes to CCDash will be documented in this file.
 
 ---
 
+## [0.9.2] — 2026-04-13
+
+### 🚀 New Features
+
+- **Session status column** (#3) — each session in the Recent Sessions list now shows a live status badge: 🟢 Working (< 1 min), 🟡 Idle (< 10 min), ⚪ Done. Status is computed from the latest scanned + live-log timestamps and refreshes with the session list. Working state pulses.
+- **Claude Code API endpoint detection** (#4) — Settings page now shows a new "Claude Code API Endpoint" card that auto-detects `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` from (priority) process env → `~/.claude/settings.json` env field → `~/.claude.json`. Labels the endpoint as **Official** or **Proxy / Relay** with masked credentials.
+- **macOS launchd auto-start** — new `launchd/` directory with `install.sh` plus two `.template` plist files. One-command setup for CCDash server auto-start and optional `autossh` SSH tunnel for remote agent aggregation. Templates use placeholders only; no hardcoded paths, hosts, or tokens.
+
+### 🐛 Fixes
+
+- Merged upstream Windows compatibility PR (#6): UTF-8 wrapping for stdout/stderr, `encoding='utf-8'` on history file reader, theme-toggle re-render for dynamic components.
+
+### 🚀 新功能
+
+- **会话状态列** (#3) — 最近会话列表每行显示实时状态徽章：🟢 工作中 (< 1 min) / 🟡 等待中 (< 10 min) / ⚪ 已结束。从扫描器+实时日志时间戳推算，随会话列表刷新；工作中状态有脉冲效果。
+- **Claude Code API 端点检测** (#4) — 设置页新增 "Claude Code API Endpoint" 卡片，按优先级从环境变量 → `~/.claude/settings.json` env → `~/.claude.json` 自动检测 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`，标注 **官方** 或 **中转站/代理**，凭据自动掩码。
+- **macOS launchd 开机自启** — 新增 `launchd/` 目录（`install.sh` + 两个 `.template` plist）。一条命令安装 CCDash server 自启 + 可选 `autossh` SSH 隧道用于聚合远程 agent。模板全部使用占位符，无任何硬编码路径 / 主机 / Token。
+
+---
+
 ## [0.9.1] — 2026-03-27
 
 ### 🚀 New Features

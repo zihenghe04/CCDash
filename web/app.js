@@ -29,6 +29,7 @@ const I18N = {
     allModels:'全部模型', apply:'应用', resetFilters:'重置',
     usageLog:'使用记录', usageLogDesc:'API 调用明细',
     status:'状态', stopAutoRefresh:'停止刷新', startAutoRefresh:'开始刷新',
+    statusWorking:'工作中', statusIdle:'等待中', statusDone:'已结束',
     modelCount:'模型数', todayCalls:'今日', todayTools:'工具', avgDuration:'平均耗时', avgTtft:'平均首字',
     perPage:'条/页', ttft:'首字', duration:'耗时',
     loading:'加载中...',
@@ -43,6 +44,9 @@ const I18N = {
     filesAccessed:'访问文件', noEvents:'无事件记录',
     sessUser:'用户', sessAssistant:'助手',
     navSettings:'设置', apiConfig:'API 配置', apiConfigDesc:'Claude.ai Session Key 用于额度追踪',
+    apiEndpoint:'Claude Code API 端点', apiEndpointDesc:'自动检测 Claude Code 的 API 端点（官方或中转站）',
+    proxyRelay:'中转站 / 代理', officialApi:'官方', notConfigured:'未配置', detectedFrom:'检测来源',
+    proxyHint:'Claude Code 当前连接的是中转站/代理。成本计算仍使用官方定价。',
     modelPricing:'模型定价', modelPricingDesc:'自定义非 Anthropic 模型的定价（每百万 Token）',
     addModel:'添加模型', savePricing:'保存定价', save:'保存',
     detectedModels:'检测到的模型', detectedModelsDesc:'在使用数据中发现的模型',
@@ -97,6 +101,7 @@ const I18N = {
     allModels:'All Models', apply:'Apply', resetFilters:'Reset',
     usageLog:'Usage Logs', usageLogDesc:'Detailed API call records',
     status:'Status', stopAutoRefresh:'Stop Refresh', startAutoRefresh:'Auto Refresh',
+    statusWorking:'Working', statusIdle:'Idle', statusDone:'Done',
     modelCount:'Models', todayCalls:'Today', todayTools:'Tools', avgDuration:'Avg Duration', avgTtft:'Avg TTFT',
     perPage:'per page', ttft:'TTFT', duration:'Duration',
     loading:'Loading...',
@@ -111,6 +116,9 @@ const I18N = {
     filesAccessed:'Files Accessed', noEvents:'No events found',
     sessUser:'User', sessAssistant:'Assistant',
     navSettings:'Settings', apiConfig:'API Configuration', apiConfigDesc:'Claude.ai session key for quota tracking',
+    apiEndpoint:'Claude Code API Endpoint', apiEndpointDesc:'Auto-detected Claude Code API endpoint (official or proxy/relay)',
+    proxyRelay:'Proxy / Relay', officialApi:'Official', notConfigured:'Not configured', detectedFrom:'Detected from',
+    proxyHint:'Claude Code is connected to a proxy/relay. Official pricing still applies to cost calculations.',
     modelPricing:'Model Pricing', modelPricingDesc:'Custom pricing for non-Anthropic models (per million tokens)',
     addModel:'Add Model', savePricing:'Save Pricing', save:'Save',
     detectedModels:'Detected Models', detectedModelsDesc:'Models found in your usage data',
@@ -415,6 +423,17 @@ const MC = {
 };
 function mC(m) { return MC[m] || '#94a3b8'; }
 function mS(m) { return m.replace('claude-','').replace(/-\d{8}$/,''); }
+
+/* ---- Status Badge ---- */
+function statusBadge(status, lastActivity) {
+  const labels = curLang === 'zh'
+    ? { working:'工作中', idle:'等待中', done:'已结束' }
+    : { working:'Working', idle:'Idle', done:'Done' };
+  const s = status || 'done';
+  const label = labels[s] || labels.done;
+  const title = lastActivity ? `Last: ${lastActivity.slice(0,19).replace('T',' ')}` : '';
+  return `<span class="st-badge st-${s}" title="${title}"><span class="st-dot"></span>${label}</span>`;
+}
 
 /* ---- Entrypoint Badge ---- */
 function epBadge(ep) {
@@ -1116,7 +1135,7 @@ function renderSessionsData(d) {
   // CLI + Codex + remote (no entrypoint) sessions stay in main list
   const cliSessions = d.sessions.filter(s => !_isDesktopSession(s));
   document.getElementById('tbSess').innerHTML = cliSessions.map(s =>
-    `<tr data-row-source="${s.source||'claude'}"><td style="width:24px;padding:4px"><input type="checkbox" class="sess-check" data-sid="${s.sessionId}" onclick="event.stopPropagation();updateCompareBtn()"></td><td onclick="showSessionDetail('${s.sessionId}')" style="cursor:pointer" title="${curLang==='zh'?'点击查看详情':'Click for details'}">${fmtT(s.timestamp)}</td><td onclick="showSessionDetail('${s.sessionId}')" style="cursor:pointer" title="${s.project}">${s.projectShort}${epBadge(s.entrypoint)}</td><td onclick="showSessionDetail('${s.sessionId}')" style="cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
+    `<tr data-row-source="${s.source||'claude'}"><td style="width:24px;padding:4px"><input type="checkbox" class="sess-check" data-sid="${s.sessionId}" onclick="event.stopPropagation();updateCompareBtn()"></td><td>${statusBadge(s.status, s.lastActivity)}</td><td onclick="showSessionDetail('${s.sessionId}')" style="cursor:pointer" title="${curLang==='zh'?'点击查看详情':'Click for details'}">${fmtT(s.timestamp)}</td><td onclick="showSessionDetail('${s.sessionId}')" style="cursor:pointer" title="${s.project}">${s.projectShort}${epBadge(s.entrypoint)}</td><td onclick="showSessionDetail('${s.sessionId}')" style="cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.firstPrompt||'—'}</td></tr>`
   ).join('');
   updateCompareBtn();
 
@@ -1765,6 +1784,9 @@ async function loadSettings() {
   document.getElementById('settingSessionKey').value = d.claude_session_key || '';
   document.getElementById('settingOrgId').value = d.claude_org_id || '';
 
+  // API endpoint detection (Issue #4)
+  renderApiEndpoint(d.api_endpoint || {});
+
   // Pricing table
   renderPricingTable(d.custom_pricing || {}, d.detected_models || []);
 
@@ -1773,6 +1795,39 @@ async function loadSettings() {
 
   // Data sources
   renderDataSources(d.data_sources || {});
+}
+
+function renderApiEndpoint(info) {
+  const el = document.getElementById('apiEndpointCard');
+  if (!el) return;
+  const t = I18N[curLang] || I18N.zh;
+  const isProxy = info.provider === 'proxy';
+  const badge = isProxy
+    ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:10px;font:600 10px var(--font);background:rgba(168,85,247,.12);color:#a855f7;border:1px solid rgba(168,85,247,.25)"><i class="ph ph-plugs-connected"></i> ${t.proxyRelay||'Proxy / Relay'}</span>`
+    : `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:10px;font:600 10px var(--font);background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25)"><i class="ph ph-check-circle"></i> ${t.officialApi||'Official'}</span>`;
+
+  const baseUrl = info.base_url || '—';
+  const authToken = info.auth_token_masked || '—';
+  const apiKey = info.api_key_masked || '—';
+  const source = info.source || (t.notConfigured || 'Not configured');
+
+  const rows = [
+    { label: 'Base URL', val: baseUrl, mono:true },
+    { label: 'ANTHROPIC_AUTH_TOKEN', val: authToken, mono:true },
+    { label: 'ANTHROPIC_API_KEY', val: apiKey, mono:true },
+    { label: t.detectedFrom || 'Detected from', val: source, mono:false },
+  ];
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">${badge}</div>
+    <div style="display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;align-items:center">
+      ${rows.map(r => `
+        <div style="font:500 11px var(--font);color:var(--text-2)">${r.label}</div>
+        <div style="font:${r.mono?'500 12px var(--mono)':'500 12px var(--font)'};color:var(--text-0);word-break:break-all">${escHtml(r.val)}</div>
+      `).join('')}
+    </div>
+    ${isProxy ? `<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.15);font:400 11px var(--font);color:var(--text-1);line-height:1.5"><i class="ph ph-info" style="color:#a855f7"></i> ${t.proxyHint || 'Claude Code is connected to a proxy/relay. Official pricing still applies to cost calculations.'}</div>` : ''}
+  `;
 }
 
 function renderPricingTable(pricing, detectedModels) {

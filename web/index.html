@@ -403,7 +403,7 @@
       <div class="sec-desc" data-i="recentSessionsDesc">Recently active sessions</div>
       <div id="sessBody">
         <div class="search-box"><input class="search-input" id="sSearch" oninput="debounceSearch()" placeholder="Search sessions..."><button class="btn" onclick="loadSess()"><i class="ph ph-magnifying-glass"></i> <span data-i="search">Search</span></button></div>
-        <div class="tw" style="max-height:400px;overflow-y:auto"><table><thead><tr><th style="width:24px"><input type="checkbox" onclick="toggleAllSessChecks(this.checked)"></th><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="content">Content</th></tr></thead><tbody id="tbSess"></tbody></table></div>
+        <div class="tw" style="max-height:400px;overflow-y:auto"><table><thead><tr><th style="width:24px"><input type="checkbox" onclick="toggleAllSessChecks(this.checked)"></th><th data-i="status">Status</th><th data-i="time">Time</th><th data-i="project">Project</th><th data-i="content">Content</th></tr></thead><tbody id="tbSess"></tbody></table></div>
       </div>
     </div>
     <!-- Web Conversations -->
@@ -422,6 +422,11 @@
   <!-- PAGE: Settings -->
   <div class="page" id="page-settings">
     <div class="card sec" style="max-width:800px">
+      <div class="sec-title"><i class="ph ph-globe"></i> <span data-i="apiEndpoint">Claude Code API Endpoint</span></div>
+      <div class="sec-desc" data-i="apiEndpointDesc">Detected Claude Code API endpoint (official or proxy/relay)</div>
+      <div id="apiEndpointCard" style="margin-top:12px"></div>
+    </div>
+    <div class="card sec" style="max-width:800px;margin-top:16px">
       <div class="sec-title"><i class="ph ph-key"></i> <span data-i="apiConfig">API Configuration</span></div>
       <div class="sec-desc" data-i="apiConfigDesc">Claude.ai session key for quota tracking</div>
       <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
