@@ -1,18 +1,20 @@
 <div align="center">
   <img src="logo.png" width="140" height="140" alt="CCDash Logo" style="border-radius: 24px;">
   <h1>✨ CCDash</h1>
-  <p><strong>The missing analytics dashboard for Claude Code CLI</strong></p>
-  <p><em>Know exactly where every token goes. No API key needed.</em></p>
+  <p><strong>See every token. Every session. Every dollar.</strong></p>
+  <p><em>A real-time analytics dashboard for Claude Code — no API key, no signup, no build step.</em></p>
 
   <p>
     <img src="https://img.shields.io/badge/python-3.8+-blue?style=flat-square&logo=python" alt="Python">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform">
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=flat-square" alt="Platform">
     <img src="https://img.shields.io/badge/zero-dependencies-orange?style=flat-square" alt="Zero Deps">
+    <img src="https://img.shields.io/github/v/release/zihenghe04/CCDash?style=flat-square&color=blueviolet" alt="Latest Release">
   </p>
 
   <p>
     <a href="https://zihenghe04.github.io/CCDash/"><strong>🌐 Live Demo</strong></a> &bull;
+    <a href="#-whats-new">What's New</a> &bull;
     <a href="#-why-ccdash">Why?</a> &bull;
     <a href="#-features">Features</a> &bull;
     <a href="#%EF%B8%8F-screenshots">Screenshots</a> &bull;
@@ -24,6 +26,19 @@
 
 ---
 
+## 🆕 What's New
+
+### v0.9.2 · 2026-04-13
+
+- 🟢 **Session status column** ([#3](https://github.com/zihenghe04/CCDash/issues/3)) — every session in the list now shows a live status badge: **Working** (pulsing, active within 1 min), **Idle** (within 10 min), or **Done**. Works for local **and** remote sessions.
+- 🔌 **API endpoint detection** ([#4](https://github.com/zihenghe04/CCDash/issues/4)) — Settings now auto-detects whether Claude Code is pointed at the official API or a proxy / relay, with masked credentials (reads env vars, `~/.claude/settings.json`, `~/.claude.json`).
+- 🍏 **macOS launchd auto-start** — one-command install (`./launchd/install.sh server`) for auto-start at login + auto-restart on crash. Optional `autossh` SSH-tunnel launcher for remote agents. Templates only, no hardcoded paths.
+- 🪟 **Windows compatibility** (via [#6](https://github.com/zihenghe04/CCDash/pull/6)) — UTF-8 stdio wrapping, history file encoding fix, theme toggle re-renders dynamic components.
+
+See the full [CHANGELOG](CHANGELOG.md) for earlier releases.
+
+---
+
 ## 🤔 Why CCDash?
 
 You're paying for a Claude subscription. But do you actually know:
@@ -32,8 +47,9 @@ You're paying for a Claude subscription. But do you actually know:
 - 📊 **Which model eats the most tokens?** Opus? Sonnet? How much cache hit are you getting?
 - ⏱️ **What's your average response time?** Is it getting slower?
 - 🔥 **Are you about to hit the rate limit?** How much of your 5h/7d quota is used?
+- 🪝 **Which session is running right now?** Which ones idle? Which are finished?
 
-**No existing tool answers these for Claude Code CLI subscribers.** CCDash does.
+**No existing tool answers these for Claude Code CLI subscribers.** CCDash does — with zero API keys, zero build step, and just Python stdlib.
 
 ### How is this different?
 
@@ -69,53 +85,55 @@ You're paying for a Claude subscription. But do you actually know:
 
 ## 🚀 Features
 
-### 📈 Real-time Overview
-> HUD-style gauges for 5h & 7d quota with animated scanning line · RPM/TPM · burn rate severity (Extreme → Idle) · usage projection ($/day) · avg TTFT & duration · sparkline trends · day/week comparison with flip-card toggle
+Grouped by what you actually want to do:
 
-### 💰 Cost Intelligence
-> Per-call cost based on [official Anthropic pricing](https://docs.anthropic.com/en/docs/about-claude/pricing) · daily cost trend chart · per-model & per-project cost breakdown · cost column in live stream & system logs · cache efficiency grading (Excellent/Good/Fair/Poor)
+### 👁 See what's happening right now
 
-### 🔍 Deep Analytics
-> Model DNA stacked bar (Opus/Sonnet/Haiku) · tool distribution donut (Read/Edit/Bash/Write) · **MCP server analytics** (per-server call/session grouping + trend) · coding rhythm (morning/afternoon/evening/night) · work mode analysis (Exploration/Building/Execution) · **prompt efficiency** (output ratio, cache grade, interaction mode classification) · cache hit analysis · activity heatmap · context window usage % · project TOP 10 with costs
+| | |
+|---|---|
+| 📈 **Real-time Overview** | HUD gauges for 5h & 7d quota · RPM / TPM / burn-rate severity · $/day projection · avg TTFT & duration · day/week comparison with flip-card toggle |
+| 🟢 **Live session status** ·`v0.9.2` | Every session in the list shows **Working** / **Idle** / **Done** with a pulsing badge — works for local and remote sessions |
+| 📡 **Live Stream** | Real-time API call feed · colored token indicators (↓input ↑output ⟲cache) · per-call cost · pause control |
+| 🔌 **API endpoint detection** ·`v0.9.2` | Auto-detects whether Claude Code is on the official API or a **proxy / relay**, with masked credentials |
 
-### ⚡ Rate Limit Predictor
-> **Risk level indicator** (Safe → Critical) · time-to-throttle countdown · safe RPM suggestion · multi-window burn rates (5m/15m/30m/60m) · auto-hidden when no quota data
+### 💰 Understand your cost
 
-### 💡 Smart Insights
-> **Cost optimization suggestions** — model downgrade (Opus → Sonnet savings), cache optimization, cost anomaly detection, peak hour warning · rule-driven, no LLM dependency · savings estimates in USD
+| | |
+|---|---|
+| 💰 **Cost Intelligence** | Per-call cost at [official pricing](https://docs.anthropic.com/en/docs/about-claude/pricing) · daily trend · per-model & per-project breakdown · cache efficiency grading |
+| 💡 **Smart Insights** | Model downgrade suggestions (Opus → Sonnet savings estimates), cache optimization, cost anomaly detection, peak-hour warning |
+| 💰 **Token Budget** | Daily / weekly / monthly limits · progress bars on Overview · thresholds at 60% / 80% / 100% with pulse animation on overrun |
+| 📊 **Comparison Reports** | Weekly & monthly reports · delta percentages with ↑↓ arrows · highlights (top model, cache rate, avg daily cost, most active day) |
+| ⚡ **Rate Limit Predictor** | Risk level (Safe → Critical) · time-to-throttle countdown · multi-window burn rates (5m/15m/30m/60m) |
 
-### 💰 Token Budget
-> Set **daily/weekly/monthly cost limits** in Settings · real-time progress bars on Overview · alert thresholds (OK → Warning 60% → Danger 80% → Over 100%) · gradient fills with pulse animation on over-budget
+### 🔍 Dig into your sessions
 
-### 📊 Comparison Reports
-> **Weekly & monthly reports** — this period vs last period · delta percentages with ↑↓ arrows · highlights (top model, cache rate, avg daily cost, most active day)
+| | |
+|---|---|
+| 📋 **Session detail** | Click any session → full conversation timeline · user/assistant messages with tool call badges · file operations · session chain (all sessions in the same project) · copy Session ID / `claude --resume` command · privacy mode |
+| 🔀 **Multi-select compare** | Check multiple sessions → aggregated stats + model / tool breakdown |
+| 🔗 **Git integration** | Per-commit AI cost · AI-assisted commit percentage · avg cost per commit · commit table |
+| 🔍 **Deep analytics** | Model DNA stacked bar · tool distribution donut · **MCP server analytics** · coding rhythm · work mode · **prompt efficiency** (output ratio, cache grade, interaction mode) · activity heatmap · context window usage % |
 
-### 🔗 Git Integration
-> **Per-commit AI cost** — correlates git commits with Claude sessions · AI-assisted percentage · avg cost per commit · commit table on Analytics page
+### 🌐 Go beyond one machine
 
-### 🔔 Webhook Notifications
-> **Slack / Discord / HTTP** webhook alerts · background monitoring for quota >80% and budget overruns · test button to verify connectivity · auto-detect Slack/Discord format
+| | |
+|---|---|
+| 🌐 **Multi-Server aggregation** | Lightweight `agent.py` on any remote host · aggregate into one dashboard · remote session detail, chain, and **live status** · SSH tunnel friendly |
+| 👥 **Multi-Account** | Configure multiple Claude accounts (personal / work) · per-account 5h / 7d quota tracking · Settings page real-time display |
+| 🍏 **macOS launchd auto-start** ·`v0.9.2` | One-command install: `./launchd/install.sh server [tunnel]` · auto-restart on crash · autossh-backed SSH tunnel for remote agents · templates only, no hardcoded paths |
+| 🔔 **Webhook alerts** | Slack / Discord / HTTP · background monitoring for quota > 80% and budget overruns · connectivity test · Slack/Discord format auto-detection |
 
-### ⌨️ CLI Quick Command
-> **`ccdash-cli.py`** — check usage from terminal · `status` / `top` / `models` / `budget` / `live` · colored output · `--server URL` for remote · zero dependencies
+### ⌨️ Work from the terminal
 
-### 📋 Session Detail & Compare
-> Click any session to open a full conversation timeline modal · user prompts & assistant responses with tool call badges · file operations tracking · session chain visualization · copy Session ID / `claude --resume` command · privacy mode · **multi-select compare** (checkbox sessions → aggregated stats + model/tool breakdown)
+| | |
+|---|---|
+| ⌨️ **`ccdash-cli.py`** | Five commands — `status` · `top` · `models` · `budget` · `live` · colored output · `--server URL` for remote connections · zero dependencies |
+| 📤 **Data export** | CSV or JSON export — respects active source and filters |
 
-### 👥 Multi-Account
-> Configure multiple Claude accounts (personal/work) · per-account 5h/7d quota tracking · Settings page real-time display
+### 🎨 A UI that doesn't suck
 
-### 📡 Live Stream
-> Real-time API call feed · colored token indicators (↓ input ↑ output ⟲ cache read ⟳ cache write) · per-call cost · auto-refresh with pause control
-
-### 🌐 Multi-Server
-> Deploy lightweight `agent.py` on remote servers · aggregate all usage in one dashboard · remote session detail & chain tracking · SSH tunnel support
-
-### 🎨 Modern UI
-> Dark/Light theme with smooth transition · Phosphor icons · HUD gauges with gradient glow · sliding nav indicator · page transitions · card flip animations · privacy mode · data export (CSV/JSON) · bilingual (EN/ZH)
-
-### 📊 24H / 7D / 30D / Monthly Views
-> Hourly trend (24H) · daily trend with token & cost series · monthly aggregation · heatmap with date range filtering
+Dark / Light theme with smooth transitions · Phosphor icons · HUD gauges with gradient glow · sliding nav indicator · page transitions · card flip animations · bilingual (EN / ZH) · Analytics **Core / Advanced** tabs to tame long pages · collapsible sections throughout
 
 ---
 
@@ -202,8 +220,9 @@ cp config.example.json config.json
 | `remotes` | ❌ | Remote agent endpoints for multi-server monitoring |
 | `claude_session_key` | ❌ | Enables 5h/7d subscription quota tracking |
 | `claude_org_id` | ❌ | Your claude.ai organization ID |
-| `budget` | ❌ | Daily/weekly/monthly cost limits in USD |
-| `webhooks` | ❌ | Webhook endpoints for alerts (Slack/Discord/HTTP) |
+| `budget` | ❌ | Daily / weekly / monthly cost limits in USD |
+| `webhooks` | ❌ | Webhook endpoints for alerts (Slack / Discord / HTTP) |
+| `accounts` | ❌ | Multi-account config (array of `{name, session_key, org_id}`) |
 
 ### 🔑 Getting Session Key (Optional)
 
@@ -220,17 +239,17 @@ To unlock real-time quota gauges:
 
 ## 🌐 Remote Monitoring
 
-Monitor multiple machines from one dashboard:
+Monitor multiple machines from one dashboard. `agent.py` is a lightweight, read-only companion that exposes the same JSONL scanning as `server.py` over HTTP:
 
 ```bash
-# 📡 On remote server
+# 📡 On remote server (same repo cloned):
 python3 agent.py --port 8421 --token my_secret
 
-# 🔒 On local machine (SSH tunnel)
+# 🔒 On local machine: SSH tunnel
 ssh -L 8421:127.0.0.1:8421 user@server -N -f
 ```
 
-Add to `config.json`:
+Add to your local `config.json`:
 
 ```json
 {
@@ -245,7 +264,9 @@ Add to `config.json`:
 }
 ```
 
-Projects from remote servers are tagged with `CLOUD` badges in the dashboard.
+Projects from remote servers are tagged with `CLOUD` badges in the dashboard, **including live session status** — a session currently running on the remote shows as **Working** in your local panel within seconds of activity.
+
+> 🍏 macOS users: `./launchd/install.sh server tunnel` below sets up the SSH tunnel with `autossh` auto-reconnect and auto-start at login. No manual `ssh -L` needed.
 
 ---
 
@@ -421,11 +442,18 @@ Contributions welcome! Feel free to open issues or PRs.
 
 ## ✨ CCDash 是什么？
 
-CCDash 是一个**自托管的实时分析面板**，用于监控 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 的使用情况。
+**每个 Token 去哪了。每个会话干了什么。每一分钱花在哪。**
 
-它直接读取本地数据文件——**无需 API Key**，完美支持订阅用户。
+CCDash 是一个**自托管的实时分析面板**，用于监控 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 的使用情况。直接读取本地 JSONL 文件——**无需 API Key**、无需构建步骤、无需 Docker，只要 Python。
 
 > 📌 社区项目，与 Anthropic 无关联。
+
+### 🆕 v0.9.2 最新更新
+
+- 🟢 **会话状态列** ([#3](https://github.com/zihenghe04/CCDash/issues/3)) — 会话列表每行显示实时状态徽章：**工作中**（1 分钟内活跃，脉冲效果）/ **等待中**（10 分钟内）/ **已结束**。本地和**远程会话**都支持。
+- 🔌 **API 端点自动检测** ([#4](https://github.com/zihenghe04/CCDash/issues/4)) — 设置页自动检测 Claude Code 连的是**官方 API** 还是**中转站/代理**，凭据自动掩码（读环境变量 → `~/.claude/settings.json` → `~/.claude.json`）。
+- 🍏 **macOS launchd 开机自启** — 一条命令安装：`./launchd/install.sh server [tunnel]`。崩溃自动重启，可选 autossh 隧道自启。模板无任何硬编码路径/IP。
+- 🪟 **Windows 兼容性修复**（合并 [#6](https://github.com/zihenghe04/CCDash/pull/6)）— UTF-8 stdio 包装、history.jsonl 编码修复、主题切换动态组件重渲染。
 
 ### 为什么需要 CCDash？
 
@@ -434,7 +462,8 @@ CCDash 是一个**自托管的实时分析面板**，用于监控 [Claude Code](
 - 💸 你的使用量如果按 API 计费要花多少钱？
 - 📊 哪个模型消耗了最多的 Token？缓存命中率如何？
 - ⏱️ 平均响应时间是多少？是否在变慢？
-- 🔥 离限速还有多远？5小时/7天额度用了多少？
+- 🔥 离限速还有多远？5 小时 / 7 天额度用了多少？
+- 🟢 **当前哪些会话还在跑？哪些已空闲？哪些结束了？**
 
 **目前没有任何工具为 Claude Code 订阅用户提供这些数据。** CCDash 填补了这个空白。
 
@@ -536,7 +565,9 @@ ssh -L 8421:127.0.0.1:8421 user@server -N -f
 }
 ```
 
-远程项目在面板中会显示 `CLOUD` 标签。
+远程项目在面板中会显示 `CLOUD` 标签，**包括实时会话状态** —— 远程正在跑的会话几秒内就会在本地面板上变成**工作中**。
+
+> 🍏 macOS 用户：下面 `./launchd/install.sh server tunnel` 一条命令把 SSH 隧道也交给 autossh 自动重连 + 开机自启，不用手动 `ssh -L`。
 
 ---
 
@@ -616,31 +647,55 @@ python3 ccdash-cli.py --server http://myserver:8420 status
 
 ## 🚀 全部功能一览
 
-### 📈 实时概览
-> HUD 仪表盘（5h/7d 额度）· RPM/TPM · 消耗速率 · 成本预估 · 平均首字/耗时 · 日/周环比卡片翻转
+按使用场景分组：
 
-### ⚡ 限速预测
-> 风险等级（安全→紧急）· 剩余可用时间倒计时 · RPM/TPM 实时监控
+### 👁 看到正在发生的一切
 
-### 💡 智能优化建议
-> 模型降级建议（Opus → Sonnet 节省比例）· 缓存优化 · 成本异常检测 · 高峰时段提醒
+| | |
+|---|---|
+| 📈 **实时概览** | HUD 仪表盘（5h/7d 额度）· RPM / TPM / 消耗速率 · 成本预估（$/day）· 平均首字 & 耗时 · 日/周环比卡片翻转 |
+| 🟢 **会话实时状态** ·`v0.9.2` | 会话列表每行显示 **工作中** / **等待中** / **已结束** 徽章（带脉冲动画）· 本地 + 远程都支持 |
+| 📡 **实时流** | 实时 API 调用流 · 彩色 Token 指示器（↓input ↑output ⟲cache）· 单次调用成本 · 暂停控制 |
+| 🔌 **API 端点检测** ·`v0.9.2` | 自动检测 Claude Code 连的是**官方** 还是 **中转站 / 代理**，凭据掩码 |
 
-### 💰 预算管理
-> 设定每日/每周/每月成本上限 · 概览页实时进度条 · 超标告警（60%/80%/100%）
+### 💰 看懂成本
 
-### 📊 深度分析（Core + Advanced 标签页）
-> **Core**: 模型用量表 · 缓存分析环图 · 工具分布 · 编码节奏 · 工作模式 · 模型 DNA · 项目 TOP 10
->
-> **Advanced**: MCP 服务器分析 · Prompt 效率（输出比率/缓存评级/交互模式）· Git 关联（每 commit AI 成本）· 周报/月报对比
+| | |
+|---|---|
+| 💰 **成本追踪** | 基于[官方定价](https://docs.anthropic.com/en/docs/about-claude/pricing)逐次计费 · 每日趋势 · 按模型/项目拆分 · 缓存效率评级 |
+| 💡 **智能优化** | 模型降级建议（Opus → Sonnet 节省估算）· 缓存优化 · 成本异常检测 · 高峰时段提醒 |
+| 💰 **Token 预算** | 每日 / 每周 / 每月上限 · 概览页实时进度条 · 60% / 80% / 100% 三档预警 · 超标脉冲动画 |
+| 📊 **对比报告** | 周报 & 月报 · 环比增减箭头 · 亮点（最活跃模型、缓存命中率、日均成本、最活跃日）|
+| ⚡ **限速预测** | 风险等级（安全→紧急）· 剩余可用时间倒计时 · 多窗口消耗速率（5m / 15m / 30m / 60m） |
 
-### 📋 会话管理
-> 会话详情时间轴 · 会话链追踪 · 复制 Session ID / Resume 命令 · **多选会话对比**（合并统计 + 图表弹窗）· 隐私模式
+### 🔍 深入每个会话
 
-### 👥 多账户
-> 配置多个 Claude 账户 · 分账户额度追踪 · 设置页实时显示
+| | |
+|---|---|
+| 📋 **会话详情** | 点击任意会话 → 完整对话时间轴 · 用户/助手消息带工具调用徽章 · 文件操作追踪 · 会话链（同项目下所有会话）· 复制 Session ID / `claude --resume` 命令 · 隐私模式 |
+| 🔀 **多选对比** | 勾选多个会话 → 合并统计 + 模型 / 工具分布图表 |
+| 🔗 **Git 关联** | 每 commit AI 成本 · AI 辅助提交占比 · 平均每 commit 成本 · 提交表 |
+| 🔍 **深度分析** | 模型 DNA 堆叠条 · 工具分布环图 · **MCP 服务器分析** · 编码节奏 · 工作模式 · **Prompt 效率**（输出比率 / 缓存评级 / 交互模式）· 活跃热力图 · 上下文窗口使用率 |
 
-### 🔌 插件系统
-> 自动发现 `plugins/` 目录 · 内置 Claude Code + Codex CLI · 可扩展自定义数据源
+### 🌐 跨机器使用
+
+| | |
+|---|---|
+| 🌐 **多服务器聚合** | 远程部署轻量级 `agent.py` · 所有数据汇总到一个面板 · 远程会话详情、会话链、**实时状态**一起同步 · SSH 隧道友好 |
+| 👥 **多账户** | 配置多个 Claude 账户（个人 / 工作）· 分账户 5h / 7d 额度追踪 · 设置页实时显示 |
+| 🍏 **macOS launchd 自启** ·`v0.9.2` | 一条命令：`./launchd/install.sh server [tunnel]` · 崩溃自动重启 · autossh 隧道自启 · 模板无任何硬编码 |
+| 🔔 **Webhook 告警** | Slack / Discord / HTTP · 后台监控额度 >80% 和预算超标 · 连通性测试 · Slack/Discord 格式自动识别 |
+
+### ⌨️ 终端玩家
+
+| | |
+|---|---|
+| ⌨️ **`ccdash-cli.py`** | 五个命令：`status` · `top` · `models` · `budget` · `live` · 彩色输出 · `--server URL` 连接远程 · 零依赖 |
+| 📤 **数据导出** | CSV / JSON 导出，尊重当前数据源和过滤条件 |
+
+### 🎨 不糟糕的 UI
+
+暗色 / 亮色主题平滑切换 · Phosphor 图标 · HUD 渐变发光仪表盘 · 滑动导航指示器 · 页面过渡 · 卡片翻转动画 · 中英双语 · 分析页 **Core / Advanced** 标签页拆分长页面 · 各区块可折叠
 
 ---
 
